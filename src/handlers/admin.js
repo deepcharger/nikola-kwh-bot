@@ -61,33 +61,76 @@ const getUsers = async (ctx) => {
 const startRecharge = async (ctx) => {
   try {
     const telegramId = ctx.from.id;
+    const args = ctx.message.text.split(' ');
     
-    // Ottieni tutti gli utenti attivi
-    const users = await User.find({ status: 'active' }).sort({ firstName: 1 });
-    
-    if (users.length === 0) {
-      return ctx.reply('Non ci sono utenti attivi a cui applicare una ricarica.');
+    // Se non ci sono argomenti, mostra istruzioni su come usare il comando
+    if (args.length === 1) {
+      return ctx.reply(
+        '🔋 *Ricarica saldo utente*\n\n' +
+        'Per ricaricare il saldo di un utente, usa uno dei seguenti formati:\n\n' +
+        '• `/admin_ricarica [ID_Telegram]` - Cerca per ID Telegram\n' +
+        '• `/admin_ricarica @[username]` - Cerca per username Telegram\n' +
+        '• `/admin_ricarica tessera:[numero_tessera]` - Cerca per numero tessera\n\n' +
+        'Esempio: `/admin_ricarica 12345678` oppure `/admin_ricarica @username` oppure `/admin_ricarica tessera:ABC123`',
+        { parse_mode: 'Markdown' }
+      );
     }
     
-    // Crea la tastiera con gli utenti
-    const keyboard = [];
+    // Estrai il parametro di ricerca
+    const searchParam = args.slice(1).join(' ').trim();
+    let user;
     
-    for (const user of users) {
-      keyboard.push([`${user.firstName} ${user.lastName} - ${user.cardId}`]);
+    // Cerca l'utente in base al tipo di parametro
+    if (searchParam.startsWith('@')) {
+      // Cerca per username
+      const username = searchParam.substring(1);
+      user = await User.findOne({ username });
+    } else if (searchParam.toLowerCase().startsWith('tessera:')) {
+      // Cerca per numero tessera
+      const cardId = searchParam.substring(8).trim();
+      user = await User.findOne({ cardId });
+    } else {
+      // Cerca per ID Telegram
+      const searchId = parseInt(searchParam);
+      if (isNaN(searchId)) {
+        return ctx.reply('⚠️ Parametro non valido. Usa un ID Telegram numerico, un @username o tessera:NUMERO.');
+      }
+      user = await User.findOne({ telegramId: searchId });
     }
     
-    keyboard.push(['❌ Annulla']);
+    // Verifica se l'utente è stato trovato
+    if (!user) {
+      return ctx.reply('⚠️ Utente non trovato. Verifica il parametro di ricerca e riprova.');
+    }
     
-    // Inizializza lo stato di ricarica
-    rechargeState[telegramId] = { step: 'waitingForUser' };
+    // Verifica che l'utente sia attivo
+    if (user.status !== 'active') {
+      let statusText = '';
+      if (user.status === 'pending') {
+        statusText = 'in attesa di approvazione';
+      } else if (user.status === 'blocked') {
+        statusText = 'bloccato';
+      } else if (user.status === 'disabled') {
+        statusText = 'disabilitato';
+      }
+      
+      return ctx.reply(`⚠️ Impossibile ricaricare questo utente perché è ${statusText}.`);
+    }
+    
+    // Salva l'utente selezionato e passa alla fase successiva
+    rechargeState[telegramId] = { 
+      step: 'waitingForAmount',
+      user: user
+    };
     
     return ctx.reply(
-      '🔋 *Nuova ricarica*\n\n' +
-      'Seleziona l\'utente a cui applicare la ricarica:',
-      {
-        parse_mode: 'Markdown',
-        ...Markup.keyboard(keyboard).oneTime().resize()
-      }
+      `✅ Utente selezionato: ${user.firstName} ${user.lastName}\n` +
+      `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n` +
+      `💰 Saldo attuale: ${user.balance.toFixed(2)} kWh\n\n` +
+      'Per favore, inserisci la quantità di kWh da ricaricare:',
+      Markup.keyboard([['❌ Annulla']])
+        .oneTime()
+        .resize()
     );
   } catch (error) {
     console.error('Errore durante l\'avvio della ricarica:', error);
@@ -119,34 +162,7 @@ const handleRechargeInput = async (ctx) => {
       );
     }
     
-    // Gestione della selezione dell'utente
-    if (state.step === 'waitingForUser') {
-      // Estrae l'ID della tessera dalla selezione
-      const cardId = input.split(' - ')[1];
-      
-      // Verifica che l'utente esista
-      const user = await User.findOne({ cardId });
-      
-      if (!user) {
-        return ctx.reply('⚠️ Utente non trovato. Per favore, seleziona un utente dalla lista:');
-      }
-      
-      // Salva l'utente selezionato e passa alla fase successiva
-      state.user = user;
-      state.step = 'waitingForAmount';
-      
-      return ctx.reply(
-        `✅ Utente selezionato: ${user.firstName} ${user.lastName}\n` +
-        `💳 Tessera ID: ${user.cardId}\n` +
-        `💰 Saldo attuale: ${user.balance.toFixed(2)} kWh\n\n` +
-        'Per favore, inserisci la quantità di kWh da ricaricare:',
-        Markup.keyboard([['❌ Annulla']])
-          .oneTime()
-          .resize()
-      );
-    }
-    
-    // Gestione dell'input della quantità
+    // Gestione dell'input della quantità (viene saltata la fase di selezione utente)
     if (state.step === 'waitingForAmount') {
       // Verifica che l'input sia un numero valido
       const amount = parseFloat(input);
@@ -162,7 +178,7 @@ const handleRechargeInput = async (ctx) => {
       return ctx.reply(
         '🔍 *Riepilogo ricarica*\n\n' +
         `👤 Utente: ${state.user.firstName} ${state.user.lastName}\n` +
-        `💳 Tessera ID: ${state.user.cardId}\n` +
+        `💳 Tessera ID: ${state.user.cardId || 'Non impostata'}\n` +
         `⚡ Quantità: ${amount} kWh\n` +
         `💰 Saldo attuale: ${state.user.balance.toFixed(2)} kWh\n` +
         `💰 Nuovo saldo: ${(state.user.balance + amount).toFixed(2)} kWh\n\n` +
@@ -226,7 +242,7 @@ const handleRechargeInput = async (ctx) => {
       return ctx.reply(
         '✅ Ricarica completata con successo!\n\n' +
         `👤 Utente: ${user.firstName} ${user.lastName}\n` +
-        `💳 Tessera ID: ${user.cardId}\n` +
+        `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n` +
         `⚡ Quantità: ${state.amount} kWh\n` +
         `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh`,
         Markup.removeKeyboard()
@@ -677,7 +693,7 @@ const formatUserDetails = async (user) => {
   
   // Aggiungi comandi rapidi
   message += `🔧 *Azioni rapide*:\n`;
-  message += `/admin_ricarica - Per ricaricare il saldo\n`;
+  message += `/admin_ricarica ${user.telegramId} - Per ricaricare il saldo\n`;
   
   if (user.status === 'pending') {
     message += `/admin_approva ${user.telegramId} - Per approvare l'utente\n`;
