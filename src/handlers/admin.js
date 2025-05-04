@@ -19,8 +19,8 @@ const inviteCodeState = {};
  */
 const getUsers = async (ctx) => {
   try {
-    // Ottieni tutti gli utenti dal database
-    const users = await User.find().sort({ createdAt: -1 });
+    // Ottieni tutti gli utenti dal database (escludendo quelli disabilitati)
+    const users = await User.find({ status: { $ne: 'disabled' } }).sort({ createdAt: -1 });
     
     if (users.length === 0) {
       return ctx.reply('Non ci sono utenti registrati.');
@@ -429,10 +429,11 @@ const getInviteCodes = async (ctx) => {
 const getStats = async (ctx) => {
   try {
     // Ottieni le statistiche dal database
-    const totalUsers = await User.countDocuments();
+    const totalUsers = await User.countDocuments({ status: { $ne: 'disabled' } });
     const activeUsers = await User.countDocuments({ status: 'active' });
     const pendingUsers = await User.countDocuments({ status: 'pending' });
     const blockedUsers = await User.countDocuments({ status: 'blocked' });
+    const disabledUsers = await User.countDocuments({ status: 'disabled' });
     
     const totalTransactions = await Transaction.countDocuments();
     const chargeTransactions = await Transaction.countDocuments({ type: 'charge' });
@@ -459,7 +460,8 @@ const getStats = async (ctx) => {
     message += `📌 Totale: ${totalUsers}\n`;
     message += `✅ Attivi: ${activeUsers}\n`;
     message += `⏳ In attesa: ${pendingUsers}\n`;
-    message += `❌ Bloccati: ${blockedUsers}\n\n`;
+    message += `❌ Bloccati: ${blockedUsers}\n`;
+    message += `🚫 Disabilitati: ${disabledUsers}\n\n`;
     
     message += '🔄 *Transazioni*\n';
     message += `📌 Totale: ${totalTransactions}\n`;
@@ -625,7 +627,20 @@ const formatUserDetails = async (user) => {
   message += `*Telegram ID*: \`${user.telegramId}\`\n`;
   message += `*Tessera ID*: ${user.cardId || 'Non impostata'}\n`;
   message += `*Saldo*: ${user.balance.toFixed(2)} kWh\n`;
-  message += `*Stato*: ${user.status === 'active' ? '✅ Attivo' : (user.status === 'pending' ? '⏳ In attesa' : '❌ Bloccato')}\n`;
+  
+  // Stato con aggiunta di "disabilitato"
+  let statusText = '';
+  if (user.status === 'active') {
+    statusText = '✅ Attivo';
+  } else if (user.status === 'pending') {
+    statusText = '⏳ In attesa';
+  } else if (user.status === 'blocked') {
+    statusText = '❌ Bloccato';
+  } else if (user.status === 'disabled') {
+    statusText = '🚫 Disabilitato';
+  }
+  
+  message += `*Stato*: ${statusText}\n`;
   message += `*Admin*: ${user.isAdmin ? '✅ Sì' : '❌ No'}\n`;
   message += `*Codice Invito Usato*: ${user.inviteCodeUsed || 'Nessuno'}\n`;
   message += `*Registrato il*: ${new Date(user.createdAt).toLocaleDateString('it-IT')} ${new Date(user.createdAt).toLocaleTimeString('it-IT')}\n`;
@@ -668,9 +683,15 @@ const formatUserDetails = async (user) => {
     message += `/admin_approva ${user.telegramId} - Per approvare l'utente\n`;
   } else if (user.status === 'active') {
     message += `/admin_blocca ${user.telegramId} - Per bloccare l'utente\n`;
+    message += `/admin_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
   } else if (user.status === 'blocked') {
     message += `/admin_sblocca ${user.telegramId} - Per sbloccare l'utente\n`;
+    message += `/admin_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
+  } else if (user.status === 'disabled') {
+    message += `/admin_sblocca ${user.telegramId} - Per riattivare l'utente\n`;
   }
+  
+  message += `/admin_elimina ${user.telegramId} - Per eliminare l'utente\n`;
   
   return message;
 };
@@ -812,17 +833,24 @@ const getUsersPaginated = async (ctx) => {
   try {
     // Verifica se ci sono parametri aggiuntivi per il filtro
     const args = ctx.message.text.split(' ');
-    let query = {};
     
+    // Questa query esclude gli utenti disabilitati per default
+    let query = { status: { $ne: 'disabled' } };
+    
+    // Se viene richiesto un filtro specifico, sovrascrive la query
     if (args.length > 1) {
       const filter = args[1].toLowerCase();
       
       if (filter === 'attivi') {
-        query.status = 'active';
+        query = { status: 'active' };
       } else if (filter === 'in_attesa' || filter === 'pending') {
-        query.status = 'pending';
+        query = { status: 'pending' };
       } else if (filter === 'bloccati') {
-        query.status = 'blocked';
+        query = { status: 'blocked' };
+      } else if (filter === 'disabilitati') {
+        query = { status: 'disabled' };
+      } else if (filter === 'tutti') {
+        query = {}; // Mostra veramente tutti, inclusi i disabilitati
       }
     }
     
@@ -850,9 +878,16 @@ const getUsersPaginated = async (ctx) => {
     message += `📄 Pagina ${page} di ${totalPages}\n\n`;
     
     for (const user of users) {
-      const status = user.status === 'active' 
-        ? '✅ Attivo' 
-        : (user.status === 'pending' ? '⏳ In attesa' : '❌ Bloccato');
+      let status = '';
+      if (user.status === 'active') {
+        status = '✅ Attivo';
+      } else if (user.status === 'pending') {
+        status = '⏳ In attesa';
+      } else if (user.status === 'blocked') {
+        status = '❌ Bloccato';
+      } else if (user.status === 'disabled') {
+        status = '🚫 Disabilitato';
+      }
       
       message += `👤 *${user.firstName} ${user.lastName}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
@@ -885,6 +920,12 @@ const getUsersPaginated = async (ctx) => {
       Markup.button.callback('Bloccati', 'users_filter_blocked')
     ]);
     
+    // Aggiunge filtro per utenti disabilitati
+    keyboard.push([
+      Markup.button.callback('Disabilitati', 'users_filter_disabled'),
+      Markup.button.callback('Veramente tutti', 'users_filter_really_all')
+    ]);
+    
     return ctx.reply(message, { 
       parse_mode: 'Markdown',
       disable_web_page_preview: true,
@@ -892,6 +933,167 @@ const getUsersPaginated = async (ctx) => {
     });
   } catch (error) {
     console.error('Errore durante la richiesta della lista utenti paginata:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Disabilita un utente
+ */
+const disableUser = async (ctx) => {
+  try {
+    // Estrai l'ID Telegram dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply('⚠️ Utilizzo: /admin_disabilita [ID_Telegram]');
+    }
+    
+    const telegramId = parseInt(args[1].trim());
+    
+    if (isNaN(telegramId)) {
+      return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
+    }
+    
+    // Cerca e aggiorna l'utente
+    const user = await User.findOneAndUpdate(
+      { telegramId }, 
+      { status: 'disabled' },  // Nuovo stato: disabilitato
+      { new: true }
+    );
+    
+    if (!user) {
+      return ctx.reply(`❌ Nessun utente trovato con ID Telegram: ${telegramId}`);
+    }
+    
+    // Notifica l'utente 
+    try {
+      await ctx.telegram.sendMessage(
+        user.telegramId,
+        '⚠️ Il tuo account è stato disabilitato da un amministratore. ' +
+        'Per maggiori informazioni, contatta l\'amministratore.'
+      );
+    } catch (error) {
+      console.error('Errore nell\'invio della notifica all\'utente:', error);
+    }
+    
+    // Conferma all'amministratore
+    return ctx.reply(
+      `✅ Utente disabilitato con successo!\n\n` +
+      `👤 ${user.firstName} ${user.lastName}\n` +
+      `🆔 ID Telegram: ${user.telegramId}\n` +
+      `💳 Tessera ID: ${user.cardId || 'Non impostata'}`
+    );
+  } catch (error) {
+    console.error('Errore durante la disabilitazione dell\'utente:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Elimina completamente un utente dal database
+ */
+const deleteUser = async (ctx) => {
+  try {
+    // Estrai l'ID Telegram dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply('⚠️ Utilizzo: /admin_elimina [ID_Telegram]');
+    }
+    
+    const telegramId = parseInt(args[1].trim());
+    
+    if (isNaN(telegramId)) {
+      return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
+    }
+    
+    // Prima ottieni l'utente per avere i dettagli
+    const user = await User.findOne({ telegramId });
+    
+    if (!user) {
+      return ctx.reply(`❌ Nessun utente trovato con ID Telegram: ${telegramId}`);
+    }
+    
+    // Richiedi conferma
+    const userDetails = `👤 ${user.firstName} ${user.lastName}\n` +
+                        `🆔 ID Telegram: ${user.telegramId}\n` +
+                        `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n` +
+                        `💰 Saldo: ${user.balance.toFixed(2)} kWh`;
+    
+    // Aggiungi le informazioni al context per la conferma successiva
+    ctx.session = ctx.session || {};
+    ctx.session.pendingDeletion = {
+      telegramId: user.telegramId,
+      userId: user._id,
+      name: `${user.firstName} ${user.lastName}`,
+      cardId: user.cardId
+    };
+    
+    return ctx.reply(
+      `⚠️ *ATTENZIONE*: Stai per eliminare definitivamente questo utente:\n\n` +
+      `${userDetails}\n\n` +
+      `Questa operazione è *IRREVERSIBILE* e rimuoverà anche tutte le transazioni associate.\n\n` +
+      `Per confermare, invia: /admin_conferma_eliminazione ${telegramId}`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    console.error('Errore durante la preparazione dell\'eliminazione dell\'utente:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Conferma l'eliminazione di un utente
+ */
+const confirmUserDeletion = async (ctx) => {
+  try {
+    // Estrai l'ID Telegram dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply('⚠️ Utilizzo: /admin_conferma_eliminazione [ID_Telegram]');
+    }
+    
+    const telegramId = parseInt(args[1].trim());
+    
+    if (isNaN(telegramId)) {
+      return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
+    }
+    
+    // Verifica che ci sia una eliminazione in attesa e che corrisponda
+    if (!ctx.session || !ctx.session.pendingDeletion || ctx.session.pendingDeletion.telegramId !== telegramId) {
+      return ctx.reply('⚠️ Nessuna richiesta di eliminazione in attesa per questo utente o la sessione è scaduta.');
+    }
+    
+    const pendingDeletion = ctx.session.pendingDeletion;
+    
+    // Notifica l'utente prima dell'eliminazione
+    try {
+      await ctx.telegram.sendMessage(
+        telegramId,
+        '⚠️ Il tuo account è stato eliminato da un amministratore. ' +
+        'Per maggiori informazioni, contatta l\'amministratore.'
+      );
+    } catch (error) {
+      console.error('Errore nell\'invio della notifica all\'utente:', error);
+    }
+    
+    // Elimina tutte le transazioni dell'utente
+    await Transaction.deleteMany({ userId: pendingDeletion.userId });
+    
+    // Elimina l'utente
+    await User.deleteOne({ telegramId });
+    
+    // Pulisci la sessione
+    delete ctx.session.pendingDeletion;
+    
+    return ctx.reply(
+      `✅ Utente eliminato definitivamente!\n\n` +
+      `👤 ${pendingDeletion.name}\n` +
+      `🆔 ID Telegram: ${pendingDeletion.telegramId}\n` +
+      `💳 Tessera ID: ${pendingDeletion.cardId || 'Non impostata'}\n\n` +
+      `Tutte le transazioni associate sono state eliminate.`
+    );
+  } catch (error) {
+    console.error('Errore durante l\'eliminazione dell\'utente:', error);
     return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
   }
 };
@@ -908,7 +1110,7 @@ module.exports = {
   rechargeState,
   inviteCodeState,
   
-  // Nuove funzioni
+  // Funzioni di ricerca utenti
   findUserByCard,
   findUserByName,
   getUserDetails,
@@ -916,5 +1118,10 @@ module.exports = {
   approveUser,
   blockUser,
   unblockUser,
-  getUsersPaginated
+  getUsersPaginated,
+  
+  // Funzioni per disabilitazione ed eliminazione
+  disableUser,
+  deleteUser,
+  confirmUserDeletion
 };
