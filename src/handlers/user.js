@@ -29,10 +29,17 @@ const showHelp = async (ctx) => {
     // Comandi per amministratori
     if (isAdmin) {
       message += '👑 Comandi amministratore\n';
-      message += '/admin_utenti - Visualizza la lista degli utenti\n';
+      message += '/admin_utenti - Visualizza la lista degli utenti paginata\n';
+      message += '/admin_trova_tessera [numero] - Cerca utente per tessera\n';
+      message += '/admin_trova_utente [nome o @username] - Cerca utente\n';
+      message += '/admin_dettaglio [ID_Telegram] - Mostra dettagli utente\n';
+      message += '/admin_approva [ID_Telegram] - Approva un utente\n';
+      message += '/admin_blocca [ID_Telegram] - Blocca un utente\n';
+      message += '/admin_sblocca [ID_Telegram] - Sblocca un utente\n';
       message += '/admin_ricarica - Effettua una ricarica per un utente\n';
       message += '/admin_crea_invito - Crea un nuovo codice di invito\n';
       message += '/admin_inviti - Visualizza la lista dei codici di invito\n';
+      message += '/admin_esporta_utenti - Esporta lista utenti in CSV\n';
       message += '/admin_stats - Visualizza le statistiche del bot\n';
     }
     
