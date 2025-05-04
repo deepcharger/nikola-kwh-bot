@@ -2,9 +2,10 @@
  * File principale del bot Telegram di Nikola kWh Manager
  */
 
-const { Telegraf, Scenes, session } = require('telegraf');
+const { Telegraf, Scenes, session, Markup } = require('telegraf');
 const config = require('./config/config');
 const connectDB = require('./database/connection');
+const User = require('./database/models/user');
 
 // Import handlers
 const { 
@@ -36,7 +37,16 @@ const {
   getInviteCodes,
   getStats,
   rechargeState,
-  inviteCodeState
+  inviteCodeState,
+  // Nuove funzioni
+  findUserByCard,
+  findUserByName,
+  getUserDetails,
+  exportUsers,
+  approveUser,
+  blockUser,
+  unblockUser,
+  getUsersPaginated
 } = require('./handlers/admin');
 
 const {
@@ -64,17 +74,372 @@ bot.command('registra_utilizzo', isRegistered, startUsageRegistration);
 bot.command('profilo', isRegistered, showProfile);
 
 // Handler per comandi admin (richiedono autenticazione come admin)
-bot.command('admin_utenti', isAdmin, getUsers);
+bot.command('admin_utenti', isAdmin, getUsersPaginated);
 bot.command('admin_ricarica', isAdmin, startRecharge);
 bot.command('admin_crea_invito', isAdmin, startInviteCodeCreation);
 bot.command('admin_inviti', isAdmin, getInviteCodes);
 bot.command('admin_stats', isAdmin, getStats);
+
+// Nuovi handler per i comandi admin
+bot.command('admin_trova_tessera', isAdmin, findUserByCard);
+bot.command('admin_trova_utente', isAdmin, findUserByName);
+bot.command('admin_dettaglio', isAdmin, getUserDetails);
+bot.command('admin_esporta_utenti', isAdmin, exportUsers);
+bot.command('admin_approva', isAdmin, approveUser);
+bot.command('admin_blocca', isAdmin, blockUser);
+bot.command('admin_sblocca', isAdmin, unblockUser);
 
 // Handler per le callback query
 bot.action(/approve_registration:(.+)/, isAdmin, approveRegistration);
 bot.action(/reject_registration:(.+)/, isAdmin, rejectRegistration);
 bot.action(/approve_usage:(.+)/, isAdmin, approveUsage);
 bot.action(/reject_usage:(.+)/, isAdmin, rejectUsage);
+
+// Handler per le callback della paginazione e filtri utenti
+bot.action(/users_page_(\d+)_(.*)/, async (ctx) => {
+  try {
+    const page = parseInt(ctx.match[1]);
+    let query = {};
+    
+    try {
+      query = JSON.parse(ctx.match[2]);
+    } catch (e) {
+      // Se non è un JSON valido, usa un oggetto vuoto
+    }
+    
+    const pageSize = 5;
+    const totalUsers = await User.countDocuments(query);
+    const totalPages = Math.ceil(totalUsers / pageSize);
+    
+    if (page < 1 || page > totalPages) {
+      return ctx.answerCbQuery('Pagina non valida');
+    }
+    
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+    
+    let message = `👥 *Lista degli utenti*\n`;
+    message += `📊 Mostrati ${users.length} di ${totalUsers} utenti\n`;
+    message += `📄 Pagina ${page} di ${totalPages}\n\n`;
+    
+    for (const user of users) {
+      const status = user.status === 'active' 
+        ? '✅ Attivo' 
+        : (user.status === 'pending' ? '⏳ In attesa' : '❌ Bloccato');
+      
+      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `🆔 ID: \`${user.telegramId}\`\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
+      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
+      message += `📊 Stato: ${status}\n\n`;
+    }
+    
+    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    
+    // Crea bottoni per la navigazione
+    const keyboard = [];
+    let navigationRow = [];
+    
+    if (page > 1) {
+      navigationRow.push(Markup.button.callback('⬅️ Precedente', `users_page_${page-1}_${JSON.stringify(query)}`));
+    }
+    
+    if (page < totalPages) {
+      navigationRow.push(Markup.button.callback('➡️ Successiva', `users_page_${page+1}_${JSON.stringify(query)}`));
+    }
+    
+    keyboard.push(navigationRow);
+    
+    // Aggiunge filtri rapidi
+    keyboard.push([
+      Markup.button.callback('Tutti', 'users_filter_all'),
+      Markup.button.callback('Attivi', 'users_filter_active'),
+      Markup.button.callback('In attesa', 'users_filter_pending'),
+      Markup.button.callback('Bloccati', 'users_filter_blocked')
+    ]);
+    
+    await ctx.editMessageText(message, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...Markup.inlineKeyboard(keyboard)
+    });
+    
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante la navigazione delle pagine:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
+// Handler per i filtri
+bot.action('users_filter_all', async (ctx) => {
+  try {
+    await ctx.editMessageText('Caricamento utenti...', { 
+      parse_mode: 'Markdown'
+    });
+    
+    const query = {};
+    const page = 1;
+    const pageSize = 5;
+    
+    const totalUsers = await User.countDocuments(query);
+    const totalPages = Math.ceil(totalUsers / pageSize);
+    
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+    
+    let message = `👥 *Lista di TUTTI gli utenti*\n`;
+    message += `📊 Mostrati ${users.length} di ${totalUsers} utenti\n`;
+    message += `📄 Pagina ${page} di ${totalPages}\n\n`;
+    
+    for (const user of users) {
+      const status = user.status === 'active' 
+        ? '✅ Attivo' 
+        : (user.status === 'pending' ? '⏳ In attesa' : '❌ Bloccato');
+      
+      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `🆔 ID: \`${user.telegramId}\`\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
+      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
+      message += `📊 Stato: ${status}\n\n`;
+    }
+    
+    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    
+    // Crea bottoni per la navigazione
+    const keyboard = [];
+    let navigationRow = [];
+    
+    if (page > 1) {
+      navigationRow.push(Markup.button.callback('⬅️ Precedente', `users_page_${page-1}_${JSON.stringify(query)}`));
+    }
+    
+    if (page < totalPages) {
+      navigationRow.push(Markup.button.callback('➡️ Successiva', `users_page_${page+1}_${JSON.stringify(query)}`));
+    }
+    
+    keyboard.push(navigationRow);
+    
+    // Aggiunge filtri rapidi
+    keyboard.push([
+      Markup.button.callback('Tutti', 'users_filter_all'),
+      Markup.button.callback('Attivi', 'users_filter_active'),
+      Markup.button.callback('In attesa', 'users_filter_pending'),
+      Markup.button.callback('Bloccati', 'users_filter_blocked')
+    ]);
+    
+    await ctx.editMessageText(message, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...Markup.inlineKeyboard(keyboard)
+    });
+    
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante il filtro degli utenti:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
+bot.action('users_filter_active', async (ctx) => {
+  try {
+    await ctx.editMessageText('Caricamento utenti attivi...', { 
+      parse_mode: 'Markdown'
+    });
+    
+    const query = { status: 'active' };
+    const page = 1;
+    const pageSize = 5;
+    
+    const totalUsers = await User.countDocuments(query);
+    const totalPages = Math.ceil(totalUsers / pageSize);
+    
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+    
+    let message = `👥 *Lista degli utenti ATTIVI*\n`;
+    message += `📊 Mostrati ${users.length} di ${totalUsers} utenti\n`;
+    message += `📄 Pagina ${page} di ${totalPages}\n\n`;
+    
+    for (const user of users) {
+      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `🆔 ID: \`${user.telegramId}\`\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
+      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n\n`;
+    }
+    
+    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    
+    // Crea bottoni per la navigazione
+    const keyboard = [];
+    let navigationRow = [];
+    
+    if (page > 1) {
+      navigationRow.push(Markup.button.callback('⬅️ Precedente', `users_page_${page-1}_${JSON.stringify(query)}`));
+    }
+    
+    if (page < totalPages) {
+      navigationRow.push(Markup.button.callback('➡️ Successiva', `users_page_${page+1}_${JSON.stringify(query)}`));
+    }
+    
+    keyboard.push(navigationRow);
+    
+    // Aggiunge filtri rapidi
+    keyboard.push([
+      Markup.button.callback('Tutti', 'users_filter_all'),
+      Markup.button.callback('Attivi', 'users_filter_active'),
+      Markup.button.callback('In attesa', 'users_filter_pending'),
+      Markup.button.callback('Bloccati', 'users_filter_blocked')
+    ]);
+    
+    await ctx.editMessageText(message, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...Markup.inlineKeyboard(keyboard)
+    });
+    
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante il filtro degli utenti attivi:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
+bot.action('users_filter_pending', async (ctx) => {
+  try {
+    await ctx.editMessageText('Caricamento utenti in attesa...', { 
+      parse_mode: 'Markdown'
+    });
+    
+    const query = { status: 'pending' };
+    const page = 1;
+    const pageSize = 5;
+    
+    const totalUsers = await User.countDocuments(query);
+    const totalPages = Math.ceil(totalUsers / pageSize);
+    
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+    
+    let message = `👥 *Lista degli utenti IN ATTESA*\n`;
+    message += `📊 Mostrati ${users.length} di ${totalUsers} utenti\n`;
+    message += `📄 Pagina ${page} di ${totalPages}\n\n`;
+    
+    for (const user of users) {
+      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `🆔 ID: \`${user.telegramId}\`\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
+    }
+    
+    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    
+    // Crea bottoni per la navigazione
+    const keyboard = [];
+    let navigationRow = [];
+    
+    if (page > 1) {
+      navigationRow.push(Markup.button.callback('⬅️ Precedente', `users_page_${page-1}_${JSON.stringify(query)}`));
+    }
+    
+    if (page < totalPages) {
+      navigationRow.push(Markup.button.callback('➡️ Successiva', `users_page_${page+1}_${JSON.stringify(query)}`));
+    }
+    
+    keyboard.push(navigationRow);
+    
+    // Aggiunge filtri rapidi
+    keyboard.push([
+      Markup.button.callback('Tutti', 'users_filter_all'),
+      Markup.button.callback('Attivi', 'users_filter_active'),
+      Markup.button.callback('In attesa', 'users_filter_pending'),
+      Markup.button.callback('Bloccati', 'users_filter_blocked')
+    ]);
+    
+    await ctx.editMessageText(message, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...Markup.inlineKeyboard(keyboard)
+    });
+    
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante il filtro degli utenti in attesa:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
+bot.action('users_filter_blocked', async (ctx) => {
+  try {
+    await ctx.editMessageText('Caricamento utenti bloccati...', { 
+      parse_mode: 'Markdown'
+    });
+    
+    const query = { status: 'blocked' };
+    const page = 1;
+    const pageSize = 5;
+    
+    const totalUsers = await User.countDocuments(query);
+    const totalPages = Math.ceil(totalUsers / pageSize);
+    
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+    
+    let message = `👥 *Lista degli utenti BLOCCATI*\n`;
+    message += `📊 Mostrati ${users.length} di ${totalUsers} utenti\n`;
+    message += `📄 Pagina ${page} di ${totalPages}\n\n`;
+    
+    for (const user of users) {
+      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `🆔 ID: \`${user.telegramId}\`\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
+    }
+    
+    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    
+    // Crea bottoni per la navigazione
+    const keyboard = [];
+    let navigationRow = [];
+    
+    if (page > 1) {
+      navigationRow.push(Markup.button.callback('⬅️ Precedente', `users_page_${page-1}_${JSON.stringify(query)}`));
+    }
+    
+    if (page < totalPages) {
+      navigationRow.push(Markup.button.callback('➡️ Successiva', `users_page_${page+1}_${JSON.stringify(query)}`));
+    }
+    
+    keyboard.push(navigationRow);
+    
+    // Aggiunge filtri rapidi
+    keyboard.push([
+      Markup.button.callback('Tutti', 'users_filter_all'),
+      Markup.button.callback('Attivi', 'users_filter_active'),
+      Markup.button.callback('In attesa', 'users_filter_pending'),
+      Markup.button.callback('Bloccati', 'users_filter_blocked')
+    ]);
+    
+    await ctx.editMessageText(message, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...Markup.inlineKeyboard(keyboard)
+    });
+    
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante il filtro degli utenti bloccati:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
 
 // Handler per messaggi di testo
 bot.on('text', async (ctx, next) => {
