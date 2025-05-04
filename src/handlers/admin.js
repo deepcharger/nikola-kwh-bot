@@ -186,13 +186,15 @@ const handleRechargeInput = async (ctx) => {
         'Confermi questa ricarica?',
         {
           parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [
-              Markup.button.callback('✅ Conferma', `confirm_recharge_${telegramId}`),
-              Markup.button.callback('❌ Annulla', `cancel_recharge_${telegramId}`)
-            ]
-          ]),
-          reply_markup: { remove_keyboard: true }
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Conferma', callback_data: `confirm_recharge_${telegramId}` },
+                { text: '❌ Annulla', callback_data: `cancel_recharge_${telegramId}` }
+              ]
+            ],
+            remove_keyboard: true
+          }
         }
       );
     }
