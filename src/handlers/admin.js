@@ -162,7 +162,7 @@ const handleRechargeInput = async (ctx) => {
       );
     }
     
-    // Gestione dell'input della quantità (viene saltata la fase di selezione utente)
+    // Gestione dell'input della quantità
     if (state.step === 'waitingForAmount') {
       // Verifica che l'input sia un numero valido
       const amount = parseFloat(input);
@@ -175,6 +175,7 @@ const handleRechargeInput = async (ctx) => {
       state.amount = amount;
       state.step = 'waitingForConfirmation';
       
+      // Usa pulsanti inline invece della tastiera per la conferma
       return ctx.reply(
         '🔍 *Riepilogo ricarica*\n\n' +
         `👤 Utente: ${state.user.firstName} ${state.user.lastName}\n` +
@@ -185,67 +186,14 @@ const handleRechargeInput = async (ctx) => {
         'Confermi questa ricarica?',
         {
           parse_mode: 'Markdown',
-          ...Markup.keyboard([['✅ Conferma', '❌ Annulla']])
-            .oneTime()
-            .resize()
+          ...Markup.inlineKeyboard([
+            [
+              Markup.button.callback('✅ Conferma', `confirm_recharge_${telegramId}`),
+              Markup.button.callback('❌ Annulla', `cancel_recharge_${telegramId}`)
+            ]
+          ]),
+          reply_markup: { remove_keyboard: true }
         }
-      );
-    }
-    
-    // Gestione della conferma
-    if (state.step === 'waitingForConfirmation') {
-      if (input !== '✅ Conferma') {
-        return ctx.reply('Per favore, conferma o annulla la ricarica:');
-      }
-      
-      // Aggiorna il saldo dell'utente
-      const user = state.user;
-      const oldBalance = user.balance;
-      const newBalance = oldBalance + state.amount;
-      
-      user.balance = newBalance;
-      await user.save();
-      
-      // Crea la transazione
-      const transaction = new Transaction({
-        userId: user._id,
-        cardId: user.cardId,
-        type: 'charge',
-        amount: state.amount,
-        previousBalance: oldBalance,
-        newBalance,
-        status: 'approved',
-        processedBy: ctx.user._id,
-        notes: 'Ricarica manuale da amministratore'
-      });
-      
-      await transaction.save();
-      
-      // Notifica l'utente
-      try {
-        await ctx.telegram.sendMessage(
-          user.telegramId,
-          '🎉 *Ricarica effettuata!*\n\n' +
-          `⚡ Quantità: ${state.amount} kWh\n` +
-          `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh\n\n` +
-          'Grazie per aver utilizzato il nostro servizio!',
-          { parse_mode: 'Markdown' }
-        );
-      } catch (error) {
-        console.error('Errore nell\'invio della notifica all\'utente:', error);
-      }
-      
-      // Cancella lo stato di ricarica
-      delete rechargeState[telegramId];
-      
-      // Conferma all'amministratore
-      return ctx.reply(
-        '✅ Ricarica completata con successo!\n\n' +
-        `👤 Utente: ${user.firstName} ${user.lastName}\n` +
-        `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n` +
-        `⚡ Quantità: ${state.amount} kWh\n` +
-        `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh`,
-        Markup.removeKeyboard()
       );
     }
   } catch (error) {
@@ -254,6 +202,108 @@ const handleRechargeInput = async (ctx) => {
       'Si è verificato un errore. Per favore, riprova più tardi.',
       Markup.removeKeyboard()
     );
+  }
+};
+
+/**
+ * Gestisce la conferma di una ricarica tramite bottone inline
+ */
+const confirmRecharge = async (ctx) => {
+  try {
+    // Estrai l'ID Telegram dal callback data
+    const callbackData = ctx.callbackQuery.data;
+    const telegramId = parseInt(callbackData.split('_')[2]);
+    
+    // Verifica che esista un processo di ricarica per questo utente
+    if (!rechargeState[telegramId] || rechargeState[telegramId].step !== 'waitingForConfirmation') {
+      return ctx.answerCbQuery('Nessuna ricarica in attesa di conferma.');
+    }
+    
+    const state = rechargeState[telegramId];
+    
+    // Aggiorna il saldo dell'utente
+    const user = state.user;
+    const oldBalance = user.balance;
+    const newBalance = oldBalance + state.amount;
+    
+    user.balance = newBalance;
+    await user.save();
+    
+    // Crea la transazione
+    const transaction = new Transaction({
+      userId: user._id,
+      cardId: user.cardId,
+      type: 'charge',
+      amount: state.amount,
+      previousBalance: oldBalance,
+      newBalance,
+      status: 'approved',
+      processedBy: ctx.callbackQuery.from._id,
+      notes: 'Ricarica manuale da amministratore'
+    });
+    
+    await transaction.save();
+    
+    // Notifica l'utente
+    try {
+      await ctx.telegram.sendMessage(
+        user.telegramId,
+        '🎉 *Ricarica effettuata!*\n\n' +
+        `⚡ Quantità: ${state.amount} kWh\n` +
+        `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh\n\n` +
+        'Grazie per aver utilizzato il nostro servizio!',
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      console.error('Errore nell\'invio della notifica all\'utente:', error);
+    }
+    
+    // Cancella lo stato di ricarica
+    delete rechargeState[telegramId];
+    
+    // Modifica il messaggio di riepilogo con la conferma
+    await ctx.editMessageText(
+      '✅ Ricarica completata con successo!\n\n' +
+      `👤 Utente: ${user.firstName} ${user.lastName}\n` +
+      `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n` +
+      `⚡ Quantità: ${state.amount} kWh\n` +
+      `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh`,
+      { parse_mode: 'Markdown' }
+    );
+    
+    return ctx.answerCbQuery('Ricarica confermata!');
+  } catch (error) {
+    console.error('Errore durante la conferma della ricarica:', error);
+    return ctx.answerCbQuery('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Gestisce l'annullamento di una ricarica tramite bottone inline
+ */
+const cancelRecharge = async (ctx) => {
+  try {
+    // Estrai l'ID Telegram dal callback data
+    const callbackData = ctx.callbackQuery.data;
+    const telegramId = parseInt(callbackData.split('_')[2]);
+    
+    // Verifica che esista un processo di ricarica per questo utente
+    if (!rechargeState[telegramId]) {
+      return ctx.answerCbQuery('Nessuna ricarica in attesa di conferma.');
+    }
+    
+    // Cancella lo stato di ricarica
+    delete rechargeState[telegramId];
+    
+    // Modifica il messaggio di riepilogo con l'annullamento
+    await ctx.editMessageText(
+      '❌ Ricarica annullata.'
+    );
+    
+    return ctx.answerCbQuery('Ricarica annullata.');
+  } catch (error) {
+    console.error('Errore durante l\'annullamento della ricarica:', error);
+    return ctx.answerCbQuery('Si è verificato un errore. Per favore, riprova più tardi.');
   }
 };
 
@@ -1125,6 +1175,10 @@ module.exports = {
   getStats,
   rechargeState,
   inviteCodeState,
+  
+  // Funzioni di ricarica con pulsanti
+  confirmRecharge,
+  cancelRecharge,
   
   // Funzioni di ricerca utenti
   findUserByCard,
