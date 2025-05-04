@@ -7,6 +7,14 @@ const User = require('../database/models/user');
 const Invite = require('../database/models/invite');
 const config = require('../config/config');
 
+/**
+ * Funzione per fare l'escape dei caratteri speciali Markdown
+ */
+function escapeMarkdown(text) {
+  if (!text) return '';
+  return String(text).replace(/([_*[\]()~`>#+=|{}.!\\])/g, '\\$1');
+}
+
 // Stato della registrazione degli utenti
 const registrationState = {};
 
@@ -143,11 +151,11 @@ const handleRegistrationInput = async (ctx) => {
       // Invia notifica all'amministratore
       const adminMessage = 
         '🔔 *Nuova richiesta di registrazione*\n\n' +
-        `👤 Nome: ${newUser.firstName} ${newUser.lastName}\n` +
+        `👤 Nome: ${escapeMarkdown(newUser.firstName)} ${escapeMarkdown(newUser.lastName)}\n` +
         `🆔 Telegram ID: ${telegramId}\n` +
-        `👤 Username: ${newUser.username ? '@' + newUser.username : 'Non impostato'}\n` +
-        `💳 Tessera ID: ${cardId}\n` +
-        `🔑 Codice invito: ${state.inviteCode || 'Non utilizzato'}\n\n` +
+        `👤 Username: ${newUser.username ? '@' + escapeMarkdown(newUser.username) : 'Non impostato'}\n` +
+        `💳 Tessera ID: ${escapeMarkdown(cardId)}\n` +
+        `🔑 Codice invito: ${escapeMarkdown(state.inviteCode || 'Non utilizzato')}\n\n` +
         'Vuoi approvare questa registrazione?';
       
       // Bottoni per l'approvazione o il rifiuto
