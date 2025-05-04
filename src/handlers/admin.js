@@ -480,7 +480,424 @@ const getStats = async (ctx) => {
   }
 };
 
+/**
+ * Trova un utente specifico per ID tessera
+ */
+const findUserByCard = async (ctx) => {
+  try {
+    // Estrai il numero di tessera dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply('⚠️ Utilizzo: /admin_trova_tessera [numero_tessera]');
+    }
+    
+    const cardId = args[1].trim();
+    
+    // Cerca l'utente nel database
+    const user = await User.findOne({ cardId });
+    
+    if (!user) {
+      return ctx.reply(`❌ Nessun utente trovato con la tessera ID: ${cardId}`);
+    }
+    
+    // Formatta i dettagli dell'utente
+    const userDetails = await formatUserDetails(user);
+    
+    return ctx.reply(userDetails, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    });
+  } catch (error) {
+    console.error('Errore durante la ricerca dell\'utente per tessera:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Trova un utente specifico per username o nome
+ */
+const findUserByName = async (ctx) => {
+  try {
+    // Estrai il nome/username dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply('⚠️ Utilizzo: /admin_trova_utente [username o nome]');
+    }
+    
+    const searchTerm = args.slice(1).join(' ').trim();
+    let searchQuery = {};
+    
+    // Se inizia con @ è uno username
+    if (searchTerm.startsWith('@')) {
+      searchQuery.username = searchTerm.substring(1);
+    } else {
+      // Altrimenti cerca nel nome o cognome con regex per ricerca parziale
+      searchQuery = {
+        $or: [
+          { firstName: { $regex: searchTerm, $options: 'i' } },
+          { lastName: { $regex: searchTerm, $options: 'i' } }
+        ]
+      };
+    }
+    
+    // Cerca l'utente nel database
+    const users = await User.find(searchQuery).limit(5);
+    
+    if (users.length === 0) {
+      return ctx.reply(`❌ Nessun utente trovato con il termine: ${searchTerm}`);
+    }
+    
+    if (users.length === 1) {
+      // Se c'è un solo risultato, mostra i dettagli completi
+      const userDetails = await formatUserDetails(users[0]);
+      return ctx.reply(userDetails, { 
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
+    } else {
+      // Se ci sono più risultati, mostra una lista breve
+      let message = `🔍 *Trovati ${users.length} utenti*\n\n`;
+      
+      for (const user of users) {
+        message += `👤 *${user.firstName} ${user.lastName}*\n`;
+        message += `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n`;
+        message += `🆔 ID Telegram: \`${user.telegramId}\`\n\n`;
+      }
+      
+      message += 'Per vedere i dettagli completi, usa: /admin_dettaglio [ID_Telegram]';
+      
+      return ctx.reply(message, { 
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
+    }
+  } catch (error) {
+    console.error('Errore durante la ricerca dell\'utente per nome:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Mostra i dettagli completi di un utente specifico
+ */
+const getUserDetails = async (ctx) => {
+  try {
+    // Estrai l'ID Telegram dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply('⚠️ Utilizzo: /admin_dettaglio [ID_Telegram]');
+    }
+    
+    const telegramId = parseInt(args[1].trim());
+    
+    if (isNaN(telegramId)) {
+      return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
+    }
+    
+    // Cerca l'utente nel database
+    const user = await User.findOne({ telegramId });
+    
+    if (!user) {
+      return ctx.reply(`❌ Nessun utente trovato con ID Telegram: ${telegramId}`);
+    }
+    
+    // Formatta i dettagli dell'utente
+    const userDetails = await formatUserDetails(user);
+    
+    return ctx.reply(userDetails, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    });
+  } catch (error) {
+    console.error('Errore durante la visualizzazione dei dettagli dell\'utente:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Formatta i dettagli completi di un utente incluse le transazioni recenti
+ */
+const formatUserDetails = async (user) => {
+  // Formatta i dettagli principali dell'utente
+  let message = `👤 *DETTAGLI UTENTE*\n\n`;
+  message += `*Nome*: ${user.firstName} ${user.lastName}\n`;
+  message += `*Username*: ${user.username ? '@' + user.username : 'Non impostato'}\n`;
+  message += `*Telegram ID*: \`${user.telegramId}\`\n`;
+  message += `*Tessera ID*: ${user.cardId || 'Non impostata'}\n`;
+  message += `*Saldo*: ${user.balance.toFixed(2)} kWh\n`;
+  message += `*Stato*: ${user.status === 'active' ? '✅ Attivo' : (user.status === 'pending' ? '⏳ In attesa' : '❌ Bloccato')}\n`;
+  message += `*Admin*: ${user.isAdmin ? '✅ Sì' : '❌ No'}\n`;
+  message += `*Codice Invito Usato*: ${user.inviteCodeUsed || 'Nessuno'}\n`;
+  message += `*Registrato il*: ${new Date(user.createdAt).toLocaleDateString('it-IT')} ${new Date(user.createdAt).toLocaleTimeString('it-IT')}\n`;
+  message += `*Ultimo accesso*: ${new Date(user.lastSeen).toLocaleDateString('it-IT')} ${new Date(user.lastSeen).toLocaleTimeString('it-IT')}\n\n`;
+  
+  // Ottieni le ultime 5 transazioni dell'utente
+  const transactions = await Transaction.find({ userId: user._id })
+    .sort({ createdAt: -1 })
+    .limit(5);
+  
+  if (transactions.length > 0) {
+    message += `📝 *Ultime transazioni*\n\n`;
+    
+    for (const transaction of transactions) {
+      const date = new Date(transaction.createdAt).toLocaleDateString('it-IT');
+      const time = new Date(transaction.createdAt).toLocaleTimeString('it-IT');
+      const amount = transaction.amount.toFixed(2);
+      const type = transaction.type === 'charge' ? '🔋 Ricarica' : '⚡ Utilizzo';
+      const status = transaction.status === 'approved' 
+        ? '✅' 
+        : (transaction.status === 'pending' ? '⏳' : '❌');
+      
+      message += `${status} ${type}: ${amount} kWh\n`;
+      message += `📅 ${date} - ⏱️ ${time}\n`;
+      message += `💰 Saldo dopo: ${transaction.newBalance.toFixed(2)} kWh\n`;
+      if (transaction.notes) {
+        message += `📝 Note: ${transaction.notes}\n`;
+      }
+      message += '\n';
+    }
+  } else {
+    message += '📝 *Nessuna transazione registrata*\n\n';
+  }
+  
+  // Aggiungi comandi rapidi
+  message += `🔧 *Azioni rapide*:\n`;
+  message += `/admin_ricarica - Per ricaricare il saldo\n`;
+  
+  if (user.status === 'pending') {
+    message += `/admin_approva ${user.telegramId} - Per approvare l'utente\n`;
+  } else if (user.status === 'active') {
+    message += `/admin_blocca ${user.telegramId} - Per bloccare l'utente\n`;
+  } else if (user.status === 'blocked') {
+    message += `/admin_sblocca ${user.telegramId} - Per sbloccare l'utente\n`;
+  }
+  
+  return message;
+};
+
+/**
+ * Esporta tutti gli utenti in formato CSV
+ */
+const exportUsers = async (ctx) => {
+  try {
+    // Ottieni tutti gli utenti dal database
+    const users = await User.find().sort({ createdAt: -1 });
+    
+    if (users.length === 0) {
+      return ctx.reply('Non ci sono utenti registrati.');
+    }
+    
+    // Crea l'intestazione del CSV
+    let csvContent = 'ID Telegram,Nome,Cognome,Username,Tessera ID,Saldo,Stato,Admin,Data Registrazione\n';
+    
+    // Aggiungi i dati di ogni utente
+    for (const user of users) {
+      const row = [
+        user.telegramId,
+        `"${user.firstName}"`,
+        `"${user.lastName}"`,
+        user.username ? `"${user.username}"` : '',
+        user.cardId || '',
+        user.balance.toFixed(2),
+        user.status,
+        user.isAdmin ? 'Sì' : 'No',
+        new Date(user.createdAt).toLocaleDateString('it-IT')
+      ];
+      
+      csvContent += row.join(',') + '\n';
+    }
+    
+    // Invia il file CSV
+    const buffer = Buffer.from(csvContent, 'utf8');
+    
+    // Crea un nome di file con la data corrente
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `utenti_nikola_${today}.csv`;
+    
+    return ctx.replyWithDocument({ 
+      source: buffer, 
+      filename: filename 
+    }, {
+      caption: `📊 Esportazione completata: ${users.length} utenti`
+    });
+  } catch (error) {
+    console.error('Errore durante l\'esportazione degli utenti:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Modifica lo stato di un utente (approva, blocca, sblocca)
+ */
+const changeUserStatus = async (ctx, newStatus) => {
+  try {
+    // Estrai l'ID Telegram dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply(`⚠️ Utilizzo: /admin_${newStatus === 'active' ? 'approva' : (newStatus === 'blocked' ? 'blocca' : 'sblocca')} [ID_Telegram]`);
+    }
+    
+    const telegramId = parseInt(args[1].trim());
+    
+    if (isNaN(telegramId)) {
+      return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
+    }
+    
+    // Cerca e aggiorna l'utente
+    const user = await User.findOneAndUpdate(
+      { telegramId }, 
+      { status: newStatus },
+      { new: true }
+    );
+    
+    if (!user) {
+      return ctx.reply(`❌ Nessun utente trovato con ID Telegram: ${telegramId}`);
+    }
+    
+    // Notifica l'utente del cambio di stato
+    try {
+      let message = '';
+      
+      if (newStatus === 'active') {
+        message = '🎉 Il tuo account è stato approvato! Ora puoi utilizzare tutte le funzionalità del bot.';
+      } else if (newStatus === 'blocked') {
+        message = '⛔ Il tuo account è stato bloccato. Contatta l\'amministratore per maggiori informazioni.';
+      } else if (newStatus === 'pending') {
+        message = '⏳ Il tuo account è stato messo in attesa. Contatta l\'amministratore per maggiori informazioni.';
+      }
+      
+      await ctx.telegram.sendMessage(user.telegramId, message);
+    } catch (error) {
+      console.error('Errore nell\'invio della notifica all\'utente:', error);
+    }
+    
+    // Conferma all'amministratore
+    return ctx.reply(
+      `✅ Stato dell'utente aggiornato con successo!\n\n` +
+      `👤 ${user.firstName} ${user.lastName}\n` +
+      `🆔 ID Telegram: ${user.telegramId}\n` +
+      `📊 Nuovo stato: ${newStatus === 'active' ? '✅ Attivo' : (newStatus === 'blocked' ? '❌ Bloccato' : '⏳ In attesa')}`
+    );
+  } catch (error) {
+    console.error(`Errore durante il cambio di stato dell'utente:`, error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Approva un utente
+ */
+const approveUser = async (ctx) => {
+  return changeUserStatus(ctx, 'active');
+};
+
+/**
+ * Blocca un utente
+ */
+const blockUser = async (ctx) => {
+  return changeUserStatus(ctx, 'blocked');
+};
+
+/**
+ * Sblocca un utente
+ */
+const unblockUser = async (ctx) => {
+  return changeUserStatus(ctx, 'active');
+};
+
+/**
+ * Lista utenti con paginazione
+ */
+const getUsersPaginated = async (ctx) => {
+  try {
+    // Verifica se ci sono parametri aggiuntivi per il filtro
+    const args = ctx.message.text.split(' ');
+    let query = {};
+    
+    if (args.length > 1) {
+      const filter = args[1].toLowerCase();
+      
+      if (filter === 'attivi') {
+        query.status = 'active';
+      } else if (filter === 'in_attesa' || filter === 'pending') {
+        query.status = 'pending';
+      } else if (filter === 'bloccati') {
+        query.status = 'blocked';
+      }
+    }
+    
+    // Ottiene il numero totale di utenti che corrispondono al query
+    const totalUsers = await User.countDocuments(query);
+    
+    if (totalUsers === 0) {
+      return ctx.reply('Non ci sono utenti che corrispondono ai criteri di ricerca.');
+    }
+    
+    // Imposta la paginazione
+    const page = 1; // Prima pagina
+    const pageSize = 5; // 5 utenti per pagina
+    const totalPages = Math.ceil(totalUsers / pageSize);
+    
+    // Ottiene gli utenti per la pagina corrente
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize);
+    
+    // Formatta la lista degli utenti
+    let message = `👥 *Lista degli utenti*\n`;
+    message += `📊 Mostrati ${users.length} di ${totalUsers} utenti\n`;
+    message += `📄 Pagina ${page} di ${totalPages}\n\n`;
+    
+    for (const user of users) {
+      const status = user.status === 'active' 
+        ? '✅ Attivo' 
+        : (user.status === 'pending' ? '⏳ In attesa' : '❌ Bloccato');
+      
+      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `🆔 ID: \`${user.telegramId}\`\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
+      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
+      message += `📊 Stato: ${status}\n\n`;
+    }
+    
+    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    
+    // Crea bottoni per la navigazione
+    const keyboard = [];
+    let navigationRow = [];
+    
+    if (page > 1) {
+      navigationRow.push(Markup.button.callback('⬅️ Precedente', `users_page_${page-1}_${JSON.stringify(query)}`));
+    }
+    
+    if (page < totalPages) {
+      navigationRow.push(Markup.button.callback('➡️ Successiva', `users_page_${page+1}_${JSON.stringify(query)}`));
+    }
+    
+    keyboard.push(navigationRow);
+    
+    // Aggiunge filtri rapidi
+    keyboard.push([
+      Markup.button.callback('Tutti', 'users_filter_all'),
+      Markup.button.callback('Attivi', 'users_filter_active'),
+      Markup.button.callback('In attesa', 'users_filter_pending'),
+      Markup.button.callback('Bloccati', 'users_filter_blocked')
+    ]);
+    
+    return ctx.reply(message, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...Markup.inlineKeyboard(keyboard)
+    });
+  } catch (error) {
+    console.error('Errore durante la richiesta della lista utenti paginata:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
 module.exports = {
+  // Funzioni esistenti
   getUsers,
   startRecharge,
   handleRechargeInput,
@@ -489,5 +906,15 @@ module.exports = {
   getInviteCodes,
   getStats,
   rechargeState,
-  inviteCodeState
+  inviteCodeState,
+  
+  // Nuove funzioni
+  findUserByCard,
+  findUserByName,
+  getUserDetails,
+  exportUsers,
+  approveUser,
+  blockUser,
+  unblockUser,
+  getUsersPaginated
 };
