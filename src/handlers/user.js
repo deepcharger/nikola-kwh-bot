@@ -15,10 +15,10 @@ const showHelp = async (ctx) => {
     const user = ctx.user;
     const isAdmin = user && user.isAdmin;
     
-    let message = '📚 *Comandi disponibili*\n\n';
+    let message = '📚 Comandi disponibili\n\n';
     
     // Comandi per tutti gli utenti
-    message += '👤 *Comandi utente*\n';
+    message += '👤 Comandi utente\n';
     message += '/start - Avvia il bot / Registrazione\n';
     message += '/help - Mostra questo messaggio di aiuto\n';
     message += '/saldo - Visualizza il tuo saldo kWh attuale\n';
@@ -28,7 +28,7 @@ const showHelp = async (ctx) => {
     
     // Comandi per amministratori
     if (isAdmin) {
-      message += '👑 *Comandi amministratore*\n';
+      message += '👑 Comandi amministratore\n';
       message += '/admin_utenti - Visualizza la lista degli utenti\n';
       message += '/admin_ricarica - Effettua una ricarica per un utente\n';
       message += '/admin_crea_invito - Crea un nuovo codice di invito\n';
@@ -36,9 +36,7 @@ const showHelp = async (ctx) => {
       message += '/admin_stats - Visualizza le statistiche del bot\n';
     }
     
-    return ctx.reply(message, { 
-      parse_mode: 'Markdown'
-    });
+    return ctx.reply(message);
   } catch (error) {
     console.error('Errore durante la visualizzazione dell\'aiuto:', error);
     return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
