@@ -334,9 +334,20 @@ const handleInviteCodeInput = async (ctx) => {
       state.notes = input === 'Nessuna nota' ? '' : input;
       
       // Crea il codice di invito
+      // Prima trova l'utente dal telegramId
+      const telegramId = ctx.from.id;
+      const adminUser = await User.findOne({ telegramId });
+      
+      if (!adminUser) {
+        return ctx.reply(
+          '⚠️ Errore: impossibile identificare l\'utente amministratore.',
+          Markup.removeKeyboard()
+        );
+      }
+      
       const invite = new Invite({
         code: state.code,
-        createdBy: ctx.user._id,
+        createdBy: adminUser._id,  // Usa l'ID dell'utente recuperato dal database
         notes: state.notes
       });
       
