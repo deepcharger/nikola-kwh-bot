@@ -38,6 +38,9 @@ const {
   getStats,
   rechargeState,
   inviteCodeState,
+  // Funzioni per i pulsanti di conferma ricarica
+  confirmRecharge,
+  cancelRecharge,
   // Funzioni di ricerca utenti
   findUserByCard,
   findUserByName,
@@ -103,6 +106,10 @@ bot.action(/approve_registration:(.+)/, isAdmin, approveRegistration);
 bot.action(/reject_registration:(.+)/, isAdmin, rejectRegistration);
 bot.action(/approve_usage:(.+)/, isAdmin, approveUsage);
 bot.action(/reject_usage:(.+)/, isAdmin, rejectUsage);
+
+// Handler per le callback della ricarica
+bot.action(/confirm_recharge_(\d+)/, isAdmin, confirmRecharge);
+bot.action(/cancel_recharge_(\d+)/, isAdmin, cancelRecharge);
 
 // Handler per le callback della paginazione e filtri utenti
 bot.action(/users_page_(\d+)_(.*)/, async (ctx) => {
