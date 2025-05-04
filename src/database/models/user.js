@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema({
   // Stato dell'utente
   status: {
     type: String,
-    enum: ['pending', 'active', 'blocked'],
+    enum: ['pending', 'active', 'blocked', 'disabled'], // Aggiunto 'disabled'
     default: 'pending'
   },
   
