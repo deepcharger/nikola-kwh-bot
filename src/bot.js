@@ -56,7 +56,13 @@ const {
   confirmUserDeletion,
   // Nuove funzioni per i comandi
   makeAdmin,
-  updateUserCommands
+  updateUserCommands,
+  // Funzioni per saldi bassi
+  startLowBalanceSearch,
+  handleLowBalanceInput,
+  showUsersPage,
+  sendUsersCsv,
+  lowBalanceState
 } = require('./handlers/admin');
 
 const {
@@ -84,7 +90,8 @@ const adminCommands = [
   { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
   { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
   { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' },
-  { command: 'admin_aggiorna_comandi', description: 'Aggiorna i comandi bot' }
+  { command: 'admin_aggiorna_comandi', description: 'Aggiorna i comandi bot' },
+  { command: 'admin_saldi_bassi', description: 'Trova utenti con saldo basso' }
 ];
 
 const userCommands = [
@@ -163,6 +170,9 @@ bot.command('admin_aggiorna_comandi', isAdmin, async (ctx) => {
   }
 });
 
+// Nuovo comando per la ricerca di utenti con saldo basso
+bot.command('admin_saldi_bassi', isAdmin, startLowBalanceSearch);
+
 // Handler per le callback query
 bot.action(/approve_registration:(.+)/, isAdmin, approveRegistration);
 bot.action(/reject_registration:(.+)/, isAdmin, rejectRegistration);
@@ -172,6 +182,46 @@ bot.action(/reject_usage:(.+)/, isAdmin, rejectUsage);
 // Handler per le callback della ricarica
 bot.action(/confirm_recharge_(\d+)/, isAdmin, confirmRecharge);
 bot.action(/cancel_recharge_(\d+)/, isAdmin, cancelRecharge);
+
+// Handler per le callback della navigazione saldi bassi
+bot.action(/low_balance_page_(\d+)/, async (ctx) => {
+  try {
+    const page = parseInt(ctx.match[1]);
+    const telegramId = ctx.from.id;
+    
+    // Controlla se esiste uno stato valido
+    if (!lowBalanceState[telegramId] || !lowBalanceState[telegramId].users) {
+      return ctx.answerCbQuery('Sessione scaduta. Per favore, avvia una nuova ricerca.');
+    }
+    
+    const state = lowBalanceState[telegramId];
+    
+    await showUsersPage(ctx, state.users, state.threshold, page);
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante la navigazione delle pagine:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
+bot.action('low_balance_csv', async (ctx) => {
+  try {
+    const telegramId = ctx.from.id;
+    
+    // Controlla se esiste uno stato valido
+    if (!lowBalanceState[telegramId] || !lowBalanceState[telegramId].users) {
+      return ctx.answerCbQuery('Sessione scaduta. Per favore, avvia una nuova ricerca.');
+    }
+    
+    const state = lowBalanceState[telegramId];
+    
+    await sendUsersCsv(ctx, state.users, state.threshold);
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante la generazione del CSV:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
 
 // Handler per le callback della paginazione e filtri utenti
 bot.action(/users_page_(\d+)_(.*)/, async (ctx) => {
@@ -742,6 +792,11 @@ bot.on('text', async (ctx, next) => {
   // Gestione dei codici di invito da admin
   if (inviteCodeState[telegramId]) {
     return handleInviteCodeInput(ctx);
+  }
+  
+  // Gestione della ricerca saldi bassi
+  if (lowBalanceState[telegramId]) {
+    return handleLowBalanceInput(ctx);
   }
   
   // Se nessun handler specifico è stato attivato, passa al middleware successivo
