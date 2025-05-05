@@ -7,6 +7,9 @@ const User = require('../database/models/user');
 const Transaction = require('../database/models/transaction');
 const config = require('../config/config');
 
+// Soglia di avviso per saldo basso (in kWh)
+const LOW_BALANCE_THRESHOLD = 20;
+
 /**
  * Stato per la registrazione delle transazioni
  */
@@ -331,6 +334,15 @@ const approveUsage = async (ctx) => {
         `💰 Nuovo saldo: ${transaction.newBalance.toFixed(2)} kWh\n` +
         `📝 Note: ${transaction.notes || 'Nessuna'}`
       );
+      
+      // Controlla se il saldo è basso e invia un avviso
+      if (transaction.newBalance < LOW_BALANCE_THRESHOLD) {
+        await ctx.telegram.sendMessage(
+          user.telegramId,
+          `⚠️ AVVISO: Il tuo saldo è basso (${transaction.newBalance.toFixed(2)} kWh).\n` +
+          'Ti consigliamo di contattare un amministratore per una ricarica.'
+        );
+      }
     } catch (error) {
       console.error('Errore nell\'invio della notifica all\'utente:', error);
     }
@@ -405,13 +417,32 @@ const getBalance = async (ctx) => {
     // Formato il saldo con 2 decimali
     const formattedBalance = user.balance.toFixed(2);
     
-    return ctx.reply(
-      `💰 *Il tuo saldo attuale è di ${formattedBalance} kWh*\n\n` +
-      '👤 Dati utente:\n' +
-      `🆔 ID Tessera: ${user.cardId}\n` +
-      `📝 Stato: ${user.status === 'active' ? '✅ Attivo' : '⏳ In attesa'}\n`,
-      { parse_mode: 'Markdown' }
-    );
+    // Messaggio base
+    let message = `💰 *Il tuo saldo attuale è di ${formattedBalance} kWh*\n\n` +
+                  '👤 Dati utente:\n' +
+                  `🆔 ID Tessera: ${user.cardId}\n` +
+                  `📝 Stato: ${user.status === 'active' ? '✅ Attivo' : '⏳ In attesa'}\n`;
+    
+    // Controlla se il saldo è basso e aggiunge un avviso
+    if (user.balance < LOW_BALANCE_THRESHOLD) {
+      message += `\n⚠️ AVVISO: Il tuo saldo è basso (inferiore a ${LOW_BALANCE_THRESHOLD} kWh).\n` +
+                'Ti consigliamo di contattare un amministratore per una ricarica.';
+      
+      // Invia anche un avviso all'amministratore
+      try {
+        if (config.ADMIN_CHAT_ID) {
+          await ctx.telegram.sendMessage(
+            config.ADMIN_CHAT_ID,
+            `⚠️ AVVISO SALDO BASSO: L'utente ${user.firstName} ${user.lastName} (ID: ${user.telegramId}) ` +
+            `ha un saldo di ${formattedBalance} kWh (inferiore a ${LOW_BALANCE_THRESHOLD} kWh).`
+          );
+        }
+      } catch (error) {
+        console.error('Errore nell\'invio dell\'avviso all\'amministratore:', error);
+      }
+    }
+    
+    return ctx.reply(message, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error('Errore durante la richiesta del saldo:', error);
     return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
