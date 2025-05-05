@@ -186,7 +186,7 @@ const completeTransaction = async (ctx) => {
     if (state.type === 'usage' && newBalance < 0) {
       delete transactionState[telegramId];
       return ctx.reply(
-        `⚠️ Saldo insufficiente. Il tuo saldo attuale è di ${previousBalance} kWh.`,
+        `⚠️ Saldo insufficiente. Il tuo saldo attuale è di ${previousBalance.toFixed(2)} kWh.`,
         Markup.removeKeyboard()
       );
     }
@@ -221,7 +221,8 @@ const completeTransaction = async (ctx) => {
         `👤 Utente: ${user.firstName} ${user.lastName}\n` +
         `💳 Tessera ID: ${user.cardId}\n` +
         `⚡ Quantità: ${state.amount} kWh\n` +
-        `💰 Saldo attuale: ${previousBalance} kWh\n` +
+        `💰 Saldo attuale: ${previousBalance.toFixed(2)} kWh\n` +
+        `💰 Saldo dopo approvazione: ${newBalance.toFixed(2)} kWh\n` +
         `📝 Note: ${transaction.notes || 'Nessuna'}\n\n` +
         'Vuoi approvare questa transazione?';
       
@@ -261,14 +262,16 @@ const completeTransaction = async (ctx) => {
       confirmationMessage = 
         '✅ Utilizzo registrato con successo!\n\n' +
         `⚡ Quantità: ${state.amount} kWh\n` +
-        `💰 Saldo attuale: ${previousBalance} kWh\n\n` +
+        `💰 Saldo attuale: ${previousBalance.toFixed(2)} kWh\n` +
+        `💰 Saldo dopo approvazione: ${newBalance.toFixed(2)} kWh\n\n` +
         'La tua richiesta è in attesa di approvazione da parte dell\'amministratore.\n' +
         'Riceverai una notifica quando la tua richiesta sarà elaborata.';
     } else {
       confirmationMessage = 
         '✅ Ricarica registrata con successo!\n\n' +
         `⚡ Quantità: ${state.amount} kWh\n` +
-        `💰 Nuovo saldo: ${newBalance} kWh`;
+        `💰 Saldo precedente: ${previousBalance.toFixed(2)} kWh\n` +
+        `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh`;
     }
     
     return ctx.reply(confirmationMessage, Markup.removeKeyboard());
@@ -324,7 +327,9 @@ const approveUsage = async (ctx) => {
         user.telegramId,
         '✅ Il tuo utilizzo è stato approvato!\n\n' +
         `⚡ Quantità: ${transaction.amount} kWh\n` +
-        `💰 Nuovo saldo: ${transaction.newBalance} kWh`
+        `💰 Saldo precedente: ${transaction.previousBalance.toFixed(2)} kWh\n` +
+        `💰 Nuovo saldo: ${transaction.newBalance.toFixed(2)} kWh\n` +
+        `📝 Note: ${transaction.notes || 'Nessuna'}`
       );
     } catch (error) {
       console.error('Errore nell\'invio della notifica all\'utente:', error);
@@ -375,7 +380,8 @@ const rejectUsage = async (ctx) => {
         user.telegramId,
         '❌ Il tuo utilizzo è stato rifiutato.\n\n' +
         `⚡ Quantità: ${transaction.amount} kWh\n` +
-        `💰 Saldo attuale: ${transaction.previousBalance} kWh\n\n` +
+        `💰 Saldo attuale: ${transaction.previousBalance.toFixed(2)} kWh (invariato)\n` +
+        `📝 Note: ${transaction.notes || 'Nessuna'}\n\n` +
         'Per maggiori informazioni, contatta l\'amministratore.'
       );
     } catch (error) {
