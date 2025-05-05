@@ -56,8 +56,6 @@ const {
   confirmUserDeletion,
   // Nuove funzioni per i comandi
   makeAdmin,
-  setUserCommands,
-  setAdminCommands,
   updateUserCommands
 } = require('./handlers/admin');
 
@@ -68,6 +66,35 @@ const {
 
 // Import middlewares
 const { isRegistered, isAdmin } = require('./middlewares/auth');
+
+// Definizione dei comandi admin e utente
+const adminCommands = [
+  { command: 'start', description: 'Avvia il bot / Registrazione' },
+  { command: 'help', description: 'Mostra i comandi disponibili' },
+  { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
+  { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
+  { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
+  { command: 'profilo', description: 'Visualizza il tuo profilo' },
+  // Comandi amministratore
+  { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
+  { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
+  { command: 'admin_trova_utente', description: 'Cerca utente per nome/username' },
+  { command: 'admin_ricarica', description: 'Ricarica il saldo di un utente' },
+  { command: 'admin_crea_invito', description: 'Crea un nuovo codice di invito' },
+  { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
+  { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
+  { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' },
+  { command: 'admin_aggiorna_comandi', description: 'Aggiorna i comandi bot' }
+];
+
+const userCommands = [
+  { command: 'start', description: 'Avvia il bot / Registrazione' },
+  { command: 'help', description: 'Mostra i comandi disponibili' },
+  { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
+  { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
+  { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
+  { command: 'profilo', description: 'Visualizza il tuo profilo' }
+];
 
 // Inizializza il bot
 const bot = new Telegraf(config.BOT_TOKEN);
@@ -108,6 +135,33 @@ bot.command('admin_conferma_eliminazione', isAdmin, confirmUserDeletion);
 
 // Nuovo comando per promuovere un utente ad amministratore
 bot.command('admin_make_admin', isAdmin, makeAdmin);
+
+// Nuovo comando per aggiornare i comandi del bot
+bot.command('admin_aggiorna_comandi', isAdmin, async (ctx) => {
+  try {
+    // Imposta comandi globali (utenti normali)
+    await bot.telegram.setMyCommands(userCommands);
+    
+    // Trova tutti gli utenti admin
+    const adminUsers = await User.find({ isAdmin: true });
+    
+    // Per ogni admin, imposta i comandi admin
+    for (const admin of adminUsers) {
+      try {
+        await bot.telegram.setMyCommands(adminCommands, { 
+          scope: { type: 'chat', chat_id: admin.telegramId } 
+        });
+      } catch (error) {
+        console.error(`Errore nell'impostazione dei comandi per l'admin ${admin.telegramId}:`, error);
+      }
+    }
+    
+    return ctx.reply('✅ Comandi bot aggiornati con successo!');
+  } catch (error) {
+    console.error('Errore durante l\'aggiornamento dei comandi:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+});
 
 // Handler per le callback query
 bot.action(/approve_registration:(.+)/, isAdmin, approveRegistration);
@@ -721,13 +775,30 @@ const startBot = async () => {
     console.log('Bot avviato con successo');
     
     // Imposta i comandi predefiniti per tutti gli utenti
-    await setUserCommands(bot);
-    console.log('Comandi utente impostati con successo');
+    try {
+      await bot.telegram.setMyCommands(userCommands);
+      console.log('Comandi utente impostati con successo');
+    } catch (error) {
+      console.error('Errore nell\'impostazione dei comandi utente:', error);
+    }
     
-    // Imposta i comandi admin per l'amministratore
-    if (config.ADMIN_CHAT_ID) {
-      await setAdminCommands(bot, parseInt(config.ADMIN_CHAT_ID));
-      console.log(`Comandi admin impostati per l'utente ${config.ADMIN_CHAT_ID}`);
+    // Imposta i comandi admin per tutti gli amministratori
+    try {
+      // Trova tutti gli admin
+      const adminUsers = await User.find({ isAdmin: true });
+      
+      for (const admin of adminUsers) {
+        try {
+          await bot.telegram.setMyCommands(adminCommands, { 
+            scope: { type: 'chat', chat_id: admin.telegramId } 
+          });
+          console.log(`Comandi admin impostati per l'utente ${admin.telegramId}`);
+        } catch (adminError) {
+          console.error(`Errore nell'impostazione dei comandi admin per ${admin.telegramId}:`, adminError);
+        }
+      }
+    } catch (error) {
+      console.error('Errore nel recupero degli admin:', error);
     }
     
     // Gestione della chiusura del bot
