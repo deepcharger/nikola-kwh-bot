@@ -53,7 +53,12 @@ const {
   // Funzioni per disabilitazione ed eliminazione
   disableUser,
   deleteUser,
-  confirmUserDeletion
+  confirmUserDeletion,
+  // Nuove funzioni per i comandi
+  makeAdmin,
+  setUserCommands,
+  setAdminCommands,
+  updateUserCommands
 } = require('./handlers/admin');
 
 const {
@@ -100,6 +105,9 @@ bot.command('admin_sblocca', isAdmin, unblockUser);
 bot.command('admin_disabilita', isAdmin, disableUser);
 bot.command('admin_elimina', isAdmin, deleteUser);
 bot.command('admin_conferma_eliminazione', isAdmin, confirmUserDeletion);
+
+// Nuovo comando per promuovere un utente ad amministratore
+bot.command('admin_make_admin', isAdmin, makeAdmin);
 
 // Handler per le callback query
 bot.action(/approve_registration:(.+)/, isAdmin, approveRegistration);
@@ -711,6 +719,16 @@ const startBot = async () => {
     // Avvio del bot
     await bot.launch();
     console.log('Bot avviato con successo');
+    
+    // Imposta i comandi predefiniti per tutti gli utenti
+    await setUserCommands(bot);
+    console.log('Comandi utente impostati con successo');
+    
+    // Imposta i comandi admin per l'amministratore
+    if (config.ADMIN_CHAT_ID) {
+      await setAdminCommands(bot, parseInt(config.ADMIN_CHAT_ID));
+      console.log(`Comandi admin impostati per l'utente ${config.ADMIN_CHAT_ID}`);
+    }
     
     // Gestione della chiusura del bot
     process.once('SIGINT', () => bot.stop('SIGINT'));
