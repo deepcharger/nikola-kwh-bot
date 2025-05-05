@@ -1369,6 +1369,32 @@ const confirmUserDeletion = async (ctx) => {
 /**
  * Avvia il processo di ricerca utenti con saldo basso
  */
+const startLowBalanceSearch = async (ctx) => {
+  try {
+    const telegramId = ctx.from.id;
+    
+    // Inizializza lo stato della ricerca
+    lowBalanceState[telegramId] = { step: 'waitingForThreshold' };
+    
+    return ctx.reply(
+      '📊 *Ricerca utenti con saldo basso*\n\n' +
+      'Inserisci il valore di soglia in kWh per cui vuoi visualizzare gli utenti con saldo inferiore:',
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.keyboard([['❌ Annulla']])
+          .oneTime()
+          .resize()
+      }
+    );
+  } catch (error) {
+    console.error('Errore durante l\'avvio della ricerca saldi bassi:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
+ * Gestisce l'input durante la ricerca di saldi bassi
+ */
 const handleLowBalanceInput = async (ctx) => {
   try {
     const telegramId = ctx.from.id;
