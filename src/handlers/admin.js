@@ -15,61 +15,12 @@ const rechargeState = {};
 const inviteCodeState = {};
 
 /**
- * Imposta i comandi predefiniti per gli utenti normali
- */
-const setUserCommands = async (bot) => {
-  try {
-    await bot.telegram.setMyCommands([
-      { command: 'start', description: 'Avvia il bot / Registrazione' },
-      { command: 'help', description: 'Mostra i comandi disponibili' },
-      { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
-      { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
-      { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
-      { command: 'profilo', description: 'Visualizza il tuo profilo' }
-    ]);
-    console.log('Comandi utente impostati con successo');
-  } catch (error) {
-    console.error('Errore nell\'impostazione dei comandi utente:', error);
-  }
-};
-
-/**
- * Imposta i comandi per gli amministratori
- */
-const setAdminCommands = async (bot, adminId) => {
-  try {
-    await bot.telegram.setMyCommands([
-      // Comandi utente standard
-      { command: 'start', description: 'Avvia il bot / Registrazione' },
-      { command: 'help', description: 'Mostra i comandi disponibili' },
-      { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
-      { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
-      { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
-      { command: 'profilo', description: 'Visualizza il tuo profilo' },
-      // Comandi amministratore
-      { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
-      { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
-      { command: 'admin_trova_utente', description: 'Cerca utente per nome/username' },
-      { command: 'admin_ricarica', description: 'Ricarica il saldo di un utente' },
-      { command: 'admin_crea_invito', description: 'Crea un nuovo codice di invito' },
-      { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
-      { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
-      { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' }
-    ], { scope: { type: 'chat', chat_id: adminId } });
-    console.log(`Comandi admin impostati per l'utente ${adminId}`);
-  } catch (error) {
-    console.error(`Errore nell'impostazione dei comandi admin per ${adminId}:`, error);
-  }
-};
-
-/**
  * Aggiorna i comandi di un utente quando diventa admin
  */
 const updateUserCommands = async (ctx, telegramId) => {
   try {
-    // Imposta i comandi admin per il nuovo amministratore
-    await ctx.telegram.setMyCommands([
-      // Comandi utente standard
+    // Assicurati che adminCommands sia definito nella scope di questo modulo
+    const adminCommands = [
       { command: 'start', description: 'Avvia il bot / Registrazione' },
       { command: 'help', description: 'Mostra i comandi disponibili' },
       { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
@@ -84,8 +35,14 @@ const updateUserCommands = async (ctx, telegramId) => {
       { command: 'admin_crea_invito', description: 'Crea un nuovo codice di invito' },
       { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
       { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
-      { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' }
-    ], { scope: { type: 'chat', chat_id: telegramId } });
+      { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' },
+      { command: 'admin_aggiorna_comandi', description: 'Aggiorna i comandi bot' }
+    ];
+
+    // Imposta i comandi admin per il nuovo amministratore
+    await ctx.telegram.setMyCommands(adminCommands, { 
+      scope: { type: 'chat', chat_id: telegramId } 
+    });
     console.log(`Comandi admin impostati per l'utente ${telegramId}`);
   } catch (error) {
     console.error(`Errore nell'impostazione dei comandi admin per ${telegramId}:`, error);
@@ -1337,7 +1294,5 @@ module.exports = {
   
   // Nuove funzioni per i comandi
   makeAdmin,
-  setUserCommands,
-  setAdminCommands,
   updateUserCommands
 };
