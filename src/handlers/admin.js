@@ -60,12 +60,6 @@ module.exports = {
   lowBalanceState
 };
 
-// Stato per la creazione dei codici di invito
-const inviteCodeState = {};
-
-// Stato per la gestione del comando saldi bassi
-const lowBalanceState = {};
-
 /**
  * Aggiorna i comandi di un utente quando diventa admin
  */
@@ -95,15 +89,16 @@ const updateUserCommands = async (ctx, telegramId) => {
     // Imposta i comandi admin per il nuovo amministratore
     await ctx.telegram.setMyCommands(adminCommands, { 
       scope: { type: 'chat', chat_id: telegramId } 
-  } catch (error) {
-    console.error('Errore durante la gestione dell\'input per la ricerca saldi bassi:', error);
-    delete lowBalanceState[telegramId];
-    return ctx.reply(
-      'Si è verificato un errore. Per favore, riprova più tardi.',
-      Markup.removeKeyboard()
-    );
-  }
-};
+    }); // Aggiungi parentesi graffa e punto e virgola qui
+      } catch (error) {
+        console.error('Errore durante la gestione dell\'input per la ricerca saldi bassi:', error);
+        delete lowBalanceState[telegramId];
+        return ctx.reply(
+          'Si è verificato un errore. Per favore, riprova più tardi.',
+          Markup.removeKeyboard()
+        );
+      }
+    };
 
 /**
  * Mostra una pagina dell'elenco degli utenti
