@@ -8,7 +8,7 @@ const Transaction = require('../database/models/transaction');
 const config = require('../config/config');
 
 // Soglia di avviso per saldo basso (in kWh)
-const LOW_BALANCE_THRESHOLD = 20;
+const LOW_BALANCE_THRESHOLD = 40;
 
 /**
  * Stato per la registrazione delle transazioni
