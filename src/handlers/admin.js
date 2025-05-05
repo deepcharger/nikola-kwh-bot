@@ -39,8 +39,8 @@ const showUsersPage = async (ctx, users, threshold, page) => {
       message += `   💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
     }
     
-    message += `\nUsa i pulsanti sotto per navigare o "/admin_dettaglio ID" per vedere i dettagli completi di un utente.`;
-    message += `\nPer ricaricare un utente: "/admin\\_ricarica ID"`;
+    message += `\nUsa i pulsanti sotto per navigare o \`/admin_dettaglio ID\` per vedere i dettagli completi di un utente.`;
+    message += `\nPer ricaricare un utente: \`/admin_ricarica ID\``;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
