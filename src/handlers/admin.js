@@ -17,89 +17,6 @@ const inviteCodeState = {};
 // Stato per la gestione del comando saldi bassi
 const lowBalanceState = {};
 
-module.exports = {
-  // Funzioni esistenti
-  getUsers,
-  startRecharge,
-  handleRechargeInput,
-  startInviteCodeCreation,
-  handleInviteCodeInput,
-  getInviteCodes,
-  getStats,
-  rechargeState,
-  inviteCodeState,
-  
-  // Funzioni di ricarica con pulsanti
-  confirmRecharge,
-  cancelRecharge,
-  
-  // Funzioni di ricerca utenti
-  findUserByCard,
-  findUserByName,
-  getUserDetails,
-  exportUsers,
-  approveUser,
-  blockUser,
-  unblockUser,
-  getUsersPaginated,
-  
-  // Funzioni per disabilitazione ed eliminazione
-  disableUser,
-  deleteUser,
-  confirmUserDeletion,
-  
-  // Nuove funzioni per i comandi
-  makeAdmin,
-  updateUserCommands,
-  
-  // Funzioni per saldi bassi
-  startLowBalanceSearch,
-  handleLowBalanceInput,
-  showUsersPage,
-  sendUsersCsv,
-  lowBalanceState
-};
-
-/**
- * Aggiorna i comandi di un utente quando diventa admin
- */
-const updateUserCommands = async (ctx, telegramId) => {
-  try {
-    // Assicurati che adminCommands sia definito nella scope di questo modulo
-    const adminCommands = [
-      { command: 'start', description: 'Avvia il bot / Registrazione' },
-      { command: 'help', description: 'Mostra i comandi disponibili' },
-      { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
-      { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
-      { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
-      { command: 'profilo', description: 'Visualizza il tuo profilo' },
-      // Comandi amministratore
-      { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
-      { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
-      { command: 'admin_trova_utente', description: 'Cerca utente per nome/username' },
-      { command: 'admin_ricarica', description: 'Ricarica il saldo di un utente' },
-      { command: 'admin_crea_invito', description: 'Crea un nuovo codice di invito' },
-      { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
-      { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
-      { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' },
-      { command: 'admin_aggiorna_comandi', description: 'Aggiorna i comandi bot' },
-      { command: 'admin_saldi_bassi', description: 'Trova utenti con saldo basso' }
-    ];
-
-    // Imposta i comandi admin per il nuovo amministratore
-    await ctx.telegram.setMyCommands(adminCommands, { 
-      scope: { type: 'chat', chat_id: telegramId } 
-    }); // Aggiungi parentesi graffa e punto e virgola qui
-      } catch (error) {
-        console.error('Errore durante la gestione dell\'input per la ricerca saldi bassi:', error);
-        delete lowBalanceState[telegramId];
-        return ctx.reply(
-          'Si è verificato un errore. Per favore, riprova più tardi.',
-          Markup.removeKeyboard()
-        );
-      }
-    };
-
 /**
  * Mostra una pagina dell'elenco degli utenti
  */
@@ -205,28 +122,60 @@ const sendUsersCsv = async (ctx, users, threshold) => {
     }
     
     // Invia il file CSV
-        const buffer = Buffer.from(csvContent, 'utf8');
-        
-        // Crea un nome di file con la data corrente
-        const today = new Date().toISOString().slice(0, 10);
-        const filename = `saldi_bassi_inferiori_${threshold}_kwh_${today}.csv`;
-        
-        // Pulisci lo stato
-        delete lowBalanceState[ctx.from.id];
-        
-        return ctx.replyWithDocument({ 
-          source: buffer, 
-          filename: filename 
-        }, {
-          caption: `📊 Esportazione completata: ${users.length} utenti con saldo inferiore a ${threshold} kWh`
-        });
-      } catch (error) {
-        console.error('Errore durante la generazione del file CSV:', error);
-        delete lowBalanceState[ctx.from.id];
-        return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.', 
-          Markup.removeKeyboard());
-      }
-    };
+    const buffer = Buffer.from(csvContent, 'utf8');
+    
+    // Crea un nome di file con la data corrente
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `saldi_bassi_inferiori_${threshold}_kwh_${today}.csv`;
+    
+    // Pulisci lo stato
+    delete lowBalanceState[ctx.from.id];
+    
+    return ctx.replyWithDocument({ 
+      source: buffer, 
+      filename: filename 
+    }, {
+      caption: `📊 Esportazione completata: ${users.length} utenti con saldo inferiore a ${threshold} kWh`
+    });
+  } catch (error) {
+    console.error('Errore durante la generazione del file CSV:', error);
+    delete lowBalanceState[ctx.from.id];
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.', 
+      Markup.removeKeyboard());
+  }
+};
+
+/**
+ * Aggiorna i comandi di un utente quando diventa admin
+ */
+const updateUserCommands = async (ctx, telegramId) => {
+  try {
+    // Assicurati che adminCommands sia definito nella scope di questo modulo
+    const adminCommands = [
+      { command: 'start', description: 'Avvia il bot / Registrazione' },
+      { command: 'help', description: 'Mostra i comandi disponibili' },
+      { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
+      { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
+      { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
+      { command: 'profilo', description: 'Visualizza il tuo profilo' },
+      // Comandi amministratore
+      { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
+      { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
+      { command: 'admin_trova_utente', description: 'Cerca utente per nome/username' },
+      { command: 'admin_ricarica', description: 'Ricarica il saldo di un utente' },
+      { command: 'admin_crea_invito', description: 'Crea un nuovo codice di invito' },
+      { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
+      { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
+      { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' },
+      { command: 'admin_aggiorna_comandi', description: 'Aggiorna i comandi bot' },
+      { command: 'admin_saldi_bassi', description: 'Trova utenti con saldo basso' }
+    ];
+
+    // Imposta i comandi admin per il nuovo amministratore
+    await ctx.telegram.setMyCommands(adminCommands, { 
+      scope: { type: 'chat', chat_id: telegramId } 
+    });
+    
     console.log(`Comandi admin impostati per l'utente ${telegramId}`);
   } catch (error) {
     console.error(`Errore nell'impostazione dei comandi admin per ${telegramId}:`, error);
@@ -1539,15 +1488,65 @@ const handleLowBalanceInput = async (ctx) => {
     }
     
     // Gestione della scelta di visualizzazione
-        if (state.step === 'waitingForDisplayChoice') {
-          if (input === '📋 Visualizza elenco') {
-            // Mostra l'elenco paginato
-            state.currentPage = 0;
-            return showUsersPage(ctx, state.users, state.threshold, state.currentPage);
-          } else if (input === '📥 Scarica file CSV') {
-            // Genera e invia il file CSV
-            return sendUsersCsv(ctx, state.users, state.threshold);
-          }
-        }
+    if (state.step === 'waitingForDisplayChoice') {
+      if (input === '📋 Visualizza elenco') {
+        // Mostra l'elenco paginato
+        state.currentPage = 0;
+        return showUsersPage(ctx, state.users, state.threshold, state.currentPage);
+      } else if (input === '📥 Scarica file CSV') {
+        // Genera e invia il file CSV
+        return sendUsersCsv(ctx, state.users, state.threshold);
       }
-    };
+    }
+  } catch (error) {
+    console.error('Errore durante la gestione dell\'input per la ricerca saldi bassi:', error);
+    delete lowBalanceState[telegramId];
+    return ctx.reply(
+      'Si è verificato un errore. Per favore, riprova più tardi.',
+      Markup.removeKeyboard()
+    );
+  }
+};
+
+module.exports = {
+  // Funzioni esistenti
+  getUsers,
+  startRecharge,
+  handleRechargeInput,
+  startInviteCodeCreation,
+  handleInviteCodeInput,
+  getInviteCodes,
+  getStats,
+  rechargeState,
+  inviteCodeState,
+  
+  // Funzioni di ricarica con pulsanti
+  confirmRecharge,
+  cancelRecharge,
+  
+  // Funzioni di ricerca utenti
+  findUserByCard,
+  findUserByName,
+  getUserDetails,
+  exportUsers,
+  approveUser,
+  blockUser,
+  unblockUser,
+  getUsersPaginated,
+  
+  // Funzioni per disabilitazione ed eliminazione
+  disableUser,
+  deleteUser,
+  confirmUserDeletion,
+  
+  // Nuove funzioni per i comandi
+  makeAdmin,
+  updateUserCommands,
+  
+  // Funzioni per saldi bassi
+  startLowBalanceSearch,
+  handleLowBalanceInput,
+  showUsersPage,
+  sendUsersCsv,
+  lowBalanceState
+};
