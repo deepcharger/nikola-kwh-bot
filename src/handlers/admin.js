@@ -205,28 +205,28 @@ const sendUsersCsv = async (ctx, users, threshold) => {
     }
     
     // Invia il file CSV
-    const buffer = Buffer.from(csvContent, 'utf8');
-    
-    // Crea un nome di file con la data corrente
-    const today = new Date().toISOString().slice(0, 10);
-    const filename = `saldi_bassi_inferiori_${threshold}_kwh_${today}.csv`;
-    
-    // Pulisci lo stato
-    delete lowBalanceState[ctx.from.id];
-    
-    return ctx.replyWithDocument({ 
-      source: buffer, 
-      filename: filename 
-    }, {
-      caption: `📊 Esportazione completata: ${users.length} utenti con saldo inferiore a ${threshold} kWh`
-    });
-  } catch (error) {
-    console.error('Errore durante la generazione del file CSV:', error);
-    delete lowBalanceState[ctx.from.id];
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.', 
-      Markup.removeKeyboard());
-  }
-};);
+        const buffer = Buffer.from(csvContent, 'utf8');
+        
+        // Crea un nome di file con la data corrente
+        const today = new Date().toISOString().slice(0, 10);
+        const filename = `saldi_bassi_inferiori_${threshold}_kwh_${today}.csv`;
+        
+        // Pulisci lo stato
+        delete lowBalanceState[ctx.from.id];
+        
+        return ctx.replyWithDocument({ 
+          source: buffer, 
+          filename: filename 
+        }, {
+          caption: `📊 Esportazione completata: ${users.length} utenti con saldo inferiore a ${threshold} kWh`
+        });
+      } catch (error) {
+        console.error('Errore durante la generazione del file CSV:', error);
+        delete lowBalanceState[ctx.from.id];
+        return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.', 
+          Markup.removeKeyboard());
+      }
+    };
     console.log(`Comandi admin impostati per l'utente ${telegramId}`);
   } catch (error) {
     console.error(`Errore nell'impostazione dei comandi admin per ${telegramId}:`, error);
