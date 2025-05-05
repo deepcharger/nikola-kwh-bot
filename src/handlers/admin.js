@@ -40,7 +40,7 @@ const showUsersPage = async (ctx, users, threshold, page) => {
     }
     
     message += `\nUsa i pulsanti sotto per navigare o "/admin_dettaglio ID" per vedere i dettagli completi di un utente.`;
-    message += `\nPer ricaricare un utente: "/admin_ricarica ID"`;
+    message += `\nPer ricaricare un utente: "/admin\\_ricarica ID"`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -1164,7 +1164,7 @@ const getUsersPaginated = async (ctx) => {
       message += `📊 Stato: ${status}\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
