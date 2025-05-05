@@ -533,32 +533,34 @@ const cancelRecharge = async (ctx) => {
 };
 
 /**
- * Avvia il processo di creazione di un codice di invito
+ * Crea direttamente un nuovo codice di invito
  */
 const startInviteCodeCreation = async (ctx) => {
   try {
     const telegramId = ctx.from.id;
     
-    // Inizializza lo stato di creazione del codice di invito
-    inviteCodeState[telegramId] = { step: 'waitingForCode' };
-    
     // Genera un codice casuale
-    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    // Inizializza lo stato per le note opzionali
+    inviteCodeState[telegramId] = { 
+      step: 'waitingForNotes',
+      code: code 
+    };
     
     return ctx.reply(
-      '🔑 *Creazione di un nuovo codice di invito*\n\n' +
-      'Inserisci il codice di invito che desideri creare, oppure usa il codice generato automaticamente:\n\n' +
-      `Codice suggerito: \`${randomCode}\`\n\n` +
-      'Per utilizzare il codice suggerito, scrivi "OK".',
+      '🔑 *Codice di invito generato*\n\n' +
+      `Codice: \`${code}\`\n\n` +
+      'Se lo desideri, puoi aggiungere una nota (opzionale). Altrimenti, invia "Nessuna nota".',
       {
         parse_mode: 'Markdown',
-        ...Markup.keyboard([['OK'], ['❌ Annulla']])
+        ...Markup.keyboard([['Nessuna nota'], ['❌ Annulla']])
           .oneTime()
           .resize()
       }
     );
   } catch (error) {
-    console.error('Errore durante l\'avvio della creazione del codice di invito:', error);
+    console.error('Errore durante la creazione del codice di invito:', error);
     return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
   }
 };
@@ -587,46 +589,13 @@ const handleInviteCodeInput = async (ctx) => {
       );
     }
     
-    // Gestione della selezione del codice
-    if (state.step === 'waitingForCode') {
-      let code;
-      
-      if (input === 'OK') {
-        // Genera un codice casuale
-        code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      } else {
-        // Usa il codice inserito dall'utente
-        code = input.trim();
-      }
-      
-      // Verifica che il codice non esista già
-      const existingCode = await Invite.findOne({ code });
-      
-      if (existingCode) {
-        return ctx.reply('⚠️ Questo codice esiste già. Per favore, inserisci un codice diverso:');
-      }
-      
-      // Salva il codice e passa alla fase successiva
-      state.code = code;
-      state.step = 'waitingForNotes';
-      
-      return ctx.reply(
-        `✅ Codice di invito: ${code}\n\n` +
-        'Se lo desideri, puoi aggiungere una nota (opzionale). Altrimenti, invia "Nessuna nota".',
-        Markup.keyboard([['Nessuna nota'], ['❌ Annulla']])
-          .oneTime()
-          .resize()
-      );
-    }
-    
-    // Gestione delle note opzionali
+    // Gestione delle note
     if (state.step === 'waitingForNotes') {
       // Salva le note
       state.notes = input === 'Nessuna nota' ? '' : input;
       
       // Crea il codice di invito
       // Prima trova l'utente dal telegramId
-      const telegramId = ctx.from.id;
       const adminUser = await User.findOne({ telegramId });
       
       if (!adminUser) {
@@ -638,7 +607,7 @@ const handleInviteCodeInput = async (ctx) => {
       
       const invite = new Invite({
         code: state.code,
-        createdBy: adminUser._id,  // Usa l'ID dell'utente recuperato dal database
+        createdBy: adminUser._id,
         notes: state.notes
       });
       
@@ -650,10 +619,13 @@ const handleInviteCodeInput = async (ctx) => {
       // Conferma all'amministratore
       return ctx.reply(
         '✅ Codice di invito creato con successo!\n\n' +
-        `🔑 Codice: ${invite.code}\n` +
+        `🔑 Codice: \`${invite.code}\`\n` +
         `📅 Scadenza: ${new Date(invite.expiresAt).toLocaleDateString('it-IT')}\n` +
         (invite.notes ? `📝 Note: ${invite.notes}\n` : ''),
-        Markup.removeKeyboard()
+        {
+          parse_mode: 'Markdown',
+          ...Markup.removeKeyboard()
+        }
       );
     }
   } catch (error) {
@@ -1396,32 +1368,6 @@ const confirmUserDeletion = async (ctx) => {
 
 /**
  * Avvia il processo di ricerca utenti con saldo basso
- */
-const startLowBalanceSearch = async (ctx) => {
-  try {
-    const telegramId = ctx.from.id;
-    
-    // Inizializza lo stato della ricerca
-    lowBalanceState[telegramId] = { step: 'waitingForThreshold' };
-    
-    return ctx.reply(
-      '📊 *Ricerca utenti con saldo basso*\n\n' +
-      'Inserisci il valore di soglia in kWh per cui vuoi visualizzare gli utenti con saldo inferiore:',
-      { 
-        parse_mode: 'Markdown',
-        ...Markup.keyboard([['❌ Annulla']])
-          .oneTime()
-          .resize()
-      }
-    );
-  } catch (error) {
-    console.error('Errore durante l\'avvio della ricerca saldi bassi:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
-  }
-};
-
-/**
- * Gestisce l'input dell'utente durante la ricerca di saldi bassi
  */
 const handleLowBalanceInput = async (ctx) => {
   try {
