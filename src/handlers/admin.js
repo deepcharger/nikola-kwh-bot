@@ -1539,13 +1539,15 @@ const handleLowBalanceInput = async (ctx) => {
     }
     
     // Gestione della scelta di visualizzazione
-    if (state.step === 'waitingForDisplayChoice') {
-      if (input === '📋 Visualizza elenco') {
-        // Mostra l'elenco paginato
-        state.currentPage = 0;
-        return showUsersPage(ctx, state.users, state.threshold, state.currentPage);
-      } else if (input === '📥 Scarica file CSV') {
-        // Genera e invia il file CSV
-        return sendUsersCsv(ctx, state.users, state.threshold);
+        if (state.step === 'waitingForDisplayChoice') {
+          if (input === '📋 Visualizza elenco') {
+            // Mostra l'elenco paginato
+            state.currentPage = 0;
+            return showUsersPage(ctx, state.users, state.threshold, state.currentPage);
+          } else if (input === '📥 Scarica file CSV') {
+            // Genera e invia il file CSV
+            return sendUsersCsv(ctx, state.users, state.threshold);
+          }
+        }
       }
-    }
+    };
