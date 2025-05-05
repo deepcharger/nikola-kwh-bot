@@ -252,6 +252,7 @@ const confirmRecharge = async (ctx) => {
         user.telegramId,
         '🎉 *Ricarica effettuata!*\n\n' +
         `⚡ Quantità: ${state.amount} kWh\n` +
+        `💰 Saldo precedente: ${oldBalance.toFixed(2)} kWh\n` +
         `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh\n\n` +
         'Grazie per aver utilizzato il nostro servizio!',
         { parse_mode: 'Markdown' }
@@ -269,6 +270,7 @@ const confirmRecharge = async (ctx) => {
       `👤 Utente: ${user.firstName} ${user.lastName}\n` +
       `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n` +
       `⚡ Quantità: ${state.amount} kWh\n` +
+      `💰 Saldo precedente: ${oldBalance.toFixed(2)} kWh\n` +
       `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh`,
       { parse_mode: 'Markdown' }
     );
@@ -733,6 +735,7 @@ const formatUserDetails = async (user) => {
       
       message += `${status} ${type}: ${amount} kWh\n`;
       message += `📅 ${date} - ⏱️ ${time}\n`;
+      message += `💰 Saldo precedente: ${transaction.previousBalance.toFixed(2)} kWh\n`;
       message += `💰 Saldo dopo: ${transaction.newBalance.toFixed(2)} kWh\n`;
       if (transaction.notes) {
         message += `📝 Note: ${transaction.notes}\n`;
