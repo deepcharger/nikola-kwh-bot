@@ -15,6 +15,137 @@ const rechargeState = {};
 const inviteCodeState = {};
 
 /**
+ * Imposta i comandi predefiniti per gli utenti normali
+ */
+const setUserCommands = async (bot) => {
+  try {
+    await bot.telegram.setMyCommands([
+      { command: 'start', description: 'Avvia il bot / Registrazione' },
+      { command: 'help', description: 'Mostra i comandi disponibili' },
+      { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
+      { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
+      { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
+      { command: 'profilo', description: 'Visualizza il tuo profilo' }
+    ]);
+    console.log('Comandi utente impostati con successo');
+  } catch (error) {
+    console.error('Errore nell\'impostazione dei comandi utente:', error);
+  }
+};
+
+/**
+ * Imposta i comandi per gli amministratori
+ */
+const setAdminCommands = async (bot, adminId) => {
+  try {
+    await bot.telegram.setMyCommands([
+      // Comandi utente standard
+      { command: 'start', description: 'Avvia il bot / Registrazione' },
+      { command: 'help', description: 'Mostra i comandi disponibili' },
+      { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
+      { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
+      { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
+      { command: 'profilo', description: 'Visualizza il tuo profilo' },
+      // Comandi amministratore
+      { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
+      { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
+      { command: 'admin_trova_utente', description: 'Cerca utente per nome/username' },
+      { command: 'admin_ricarica', description: 'Ricarica il saldo di un utente' },
+      { command: 'admin_crea_invito', description: 'Crea un nuovo codice di invito' },
+      { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
+      { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
+      { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' }
+    ], { scope: { type: 'chat', chat_id: adminId } });
+    console.log(`Comandi admin impostati per l'utente ${adminId}`);
+  } catch (error) {
+    console.error(`Errore nell'impostazione dei comandi admin per ${adminId}:`, error);
+  }
+};
+
+/**
+ * Aggiorna i comandi di un utente quando diventa admin
+ */
+const updateUserCommands = async (ctx, telegramId) => {
+  try {
+    // Imposta i comandi admin per il nuovo amministratore
+    await ctx.telegram.setMyCommands([
+      // Comandi utente standard
+      { command: 'start', description: 'Avvia il bot / Registrazione' },
+      { command: 'help', description: 'Mostra i comandi disponibili' },
+      { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
+      { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
+      { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
+      { command: 'profilo', description: 'Visualizza il tuo profilo' },
+      // Comandi amministratore
+      { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
+      { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
+      { command: 'admin_trova_utente', description: 'Cerca utente per nome/username' },
+      { command: 'admin_ricarica', description: 'Ricarica il saldo di un utente' },
+      { command: 'admin_crea_invito', description: 'Crea un nuovo codice di invito' },
+      { command: 'admin_inviti', description: 'Visualizza i codici di invito' },
+      { command: 'admin_stats', description: 'Visualizza le statistiche del bot' },
+      { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' }
+    ], { scope: { type: 'chat', chat_id: telegramId } });
+    console.log(`Comandi admin impostati per l'utente ${telegramId}`);
+  } catch (error) {
+    console.error(`Errore nell'impostazione dei comandi admin per ${telegramId}:`, error);
+  }
+};
+
+/**
+ * Rende un utente amministratore
+ */
+const makeAdmin = async (ctx) => {
+  try {
+    // Estrai l'ID Telegram dal comando
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+      return ctx.reply('⚠️ Utilizzo: /admin_make_admin [ID_Telegram]');
+    }
+    
+    const telegramId = parseInt(args[1].trim());
+    
+    if (isNaN(telegramId)) {
+      return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
+    }
+    
+    // Cerca e aggiorna l'utente
+    const user = await User.findOneAndUpdate(
+      { telegramId }, 
+      { isAdmin: true },
+      { new: true }
+    );
+    
+    if (!user) {
+      return ctx.reply(`❌ Nessun utente trovato con ID Telegram: ${telegramId}`);
+    }
+    
+    // Aggiorna i comandi disponibili per il nuovo admin
+    await updateUserCommands(ctx, telegramId);
+    
+    // Notifica l'utente
+    try {
+      await ctx.telegram.sendMessage(
+        user.telegramId,
+        '🎉 Sei stato promosso ad amministratore! Ora hai accesso a tutti i comandi amministrativi. Usa /help per vedere tutti i comandi disponibili.'
+      );
+    } catch (error) {
+      console.error('Errore nell\'invio della notifica all\'utente:', error);
+    }
+    
+    // Conferma all'amministratore
+    return ctx.reply(
+      `✅ Utente promosso ad amministratore con successo!\n\n` +
+      `👤 ${user.firstName} ${user.lastName}\n` +
+      `🆔 ID Telegram: ${user.telegramId}`
+    );
+  } catch (error) {
+    console.error('Errore durante la promozione dell\'utente ad amministratore:', error);
+    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+  }
+};
+
+/**
  * Ottiene la lista degli utenti
  */
 const getUsers = async (ctx) => {
@@ -764,6 +895,10 @@ const formatUserDetails = async (user) => {
   
   message += `/admin_elimina ${user.telegramId} - Per eliminare l'utente\n`;
   
+  if (!user.isAdmin) {
+    message += `/admin_make_admin ${user.telegramId} - Per promuovere l'utente ad amministratore\n`;
+  }
+  
   return message;
 };
 
@@ -1198,5 +1333,11 @@ module.exports = {
   // Funzioni per disabilitazione ed eliminazione
   disableUser,
   deleteUser,
-  confirmUserDeletion
+  confirmUserDeletion,
+  
+  // Nuove funzioni per i comandi
+  makeAdmin,
+  setUserCommands,
+  setAdminCommands,
+  updateUserCommands
 };
