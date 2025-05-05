@@ -1442,33 +1442,28 @@ const handleLowBalanceInput = async (ctx) => {
         );
       }
       
-      // Chiedi all'utente come vuole visualizzare i risultati
+      // Salva gli utenti nell'oggetto di stato
       state.users = users;
-      state.step = 'waitingForDisplayChoice';
       
+      // Rimuovi la tastiera precedente e mostra i pulsanti inline per scegliere come visualizzare i risultati
       return ctx.reply(
         `📊 Trovati ${users.length} utenti con saldo inferiore a ${threshold} kWh.\n\n` +
         'Come preferisci visualizzare i risultati?',
-        Markup.keyboard([
-          ['📋 Visualizza elenco'], 
-          ['📥 Scarica file CSV'], 
-          ['❌ Annulla']
-        ])
-          .oneTime()
-          .resize()
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📋 Visualizza elenco', callback_data: 'low_balance_show_list' },
+                { text: '📥 Scarica file CSV', callback_data: 'low_balance_csv' }
+              ],
+              [
+                { text: '❌ Annulla', callback_data: 'low_balance_cancel' }
+              ]
+            ],
+            remove_keyboard: true
+          }
+        }
       );
-    }
-    
-    // Gestione della scelta di visualizzazione
-    if (state.step === 'waitingForDisplayChoice') {
-      if (input === '📋 Visualizza elenco') {
-        // Mostra l'elenco paginato
-        state.currentPage = 0;
-        return showUsersPage(ctx, state.users, state.threshold, state.currentPage);
-      } else if (input === '📥 Scarica file CSV') {
-        // Genera e invia il file CSV
-        return sendUsersCsv(ctx, state.users, state.threshold);
-      }
     }
   } catch (error) {
     console.error('Errore durante la gestione dell\'input per la ricerca saldi bassi:', error);
