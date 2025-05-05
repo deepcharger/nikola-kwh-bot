@@ -44,6 +44,9 @@ const showHelp = async (ctx) => {
       message += '/admin_inviti - Visualizza la lista dei codici di invito\n';
       message += '/admin_esporta_utenti - Esporta lista utenti in CSV\n';
       message += '/admin_stats - Visualizza le statistiche del bot\n';
+      message += '/admin_make_admin [ID_Telegram] - Promuovi un utente ad amministratore\n';
+      message += '/admin_aggiorna_comandi - Aggiorna i comandi bot\n';
+      message += '/admin_saldi_bassi - Trova utenti con saldo basso\n';
     }
     
     return ctx.reply(message);
