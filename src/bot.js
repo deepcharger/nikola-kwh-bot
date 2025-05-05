@@ -223,6 +223,48 @@ bot.action('low_balance_csv', async (ctx) => {
   }
 });
 
+// Nuovi handler per le callback della visualizzazione saldi bassi
+bot.action('low_balance_show_list', async (ctx) => {
+  try {
+    const telegramId = ctx.from.id;
+    
+    // Controlla se esiste uno stato valido
+    if (!lowBalanceState[telegramId] || !lowBalanceState[telegramId].users) {
+      return ctx.answerCbQuery('Sessione scaduta. Per favore, avvia una nuova ricerca.');
+    }
+    
+    const state = lowBalanceState[telegramId];
+    state.currentPage = 0;
+    
+    await showUsersPage(ctx, state.users, state.threshold, state.currentPage);
+    return ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Errore durante la visualizzazione degli utenti:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
+bot.action('low_balance_cancel', async (ctx) => {
+  try {
+    const telegramId = ctx.from.id;
+    
+    // Controlla se esiste uno stato valido
+    if (!lowBalanceState[telegramId]) {
+      return ctx.answerCbQuery('Nessuna operazione in corso.');
+    }
+    
+    // Cancella lo stato
+    delete lowBalanceState[telegramId];
+    
+    // Modifica il messaggio
+    await ctx.editMessageText('❌ Operazione annullata.');
+    return ctx.answerCbQuery('Operazione annullata');
+  } catch (error) {
+    console.error('Errore durante l\'annullamento dell\'operazione:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
 // Handler per le callback della paginazione e filtri utenti
 bot.action(/users_page_(\d+)_(.*)/, async (ctx) => {
   try {
