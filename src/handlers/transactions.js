@@ -6,6 +6,11 @@ const { Markup } = require('telegraf');
 const User = require('../database/models/user');
 const Transaction = require('../database/models/transaction');
 const config = require('../config/config');
+const { 
+  sanitizeAmount, 
+  sanitizeString, 
+  generateErrorCode 
+} = require('../utils/sanitize');
 
 // Soglia di avviso per saldo basso (in kWh)
 const LOW_BALANCE_THRESHOLD = 40;
@@ -25,7 +30,8 @@ const startUsageRegistration = async (ctx) => {
     // Inizializza lo stato di registrazione dell'utilizzo
     transactionState[telegramId] = { 
       step: 'waitingForUsageAmount',
-      type: 'usage'
+      type: 'usage',
+      lastActivity: Date.now()
     };
     
     return ctx.reply(
@@ -36,8 +42,9 @@ const startUsageRegistration = async (ctx) => {
         .resize()
     );
   } catch (error) {
-    console.error('Errore durante l\'avvio della registrazione dell\'utilizzo:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'avvio della registrazione dell'utilizzo:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -63,8 +70,9 @@ const startPhotoUpload = async (ctx) => {
         .resize()
     );
   } catch (error) {
-    console.error('Errore durante l\'avvio del caricamento della foto:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'avvio del caricamento della foto:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -82,6 +90,8 @@ const handleTransactionInput = async (ctx) => {
     }
     
     const state = transactionState[telegramId];
+    // Aggiorna il timestamp di attività
+    state.lastActivity = Date.now();
     
     // Gestione dell'annullamento
     if (input === '❌ Annulla') {
@@ -94,11 +104,11 @@ const handleTransactionInput = async (ctx) => {
     
     // Gestione dell'input della quantità
     if (state.step === 'waitingForUsageAmount') {
-      // Verifica che l'input sia un numero valido
-      const amount = parseFloat(input);
+      // Sanitizza e verifica che l'input sia un numero valido
+      const amount = sanitizeAmount(input, 1000); // max 1000 kWh
       
-      if (isNaN(amount) || amount <= 0) {
-        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido:');
+      if (!amount) {
+        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido (massimo 1000 kWh):');
       }
       
       // Salva l'importo e passa alla fase successiva
@@ -113,15 +123,16 @@ const handleTransactionInput = async (ctx) => {
     
     // Gestione delle note opzionali
     if (state.step === 'waitingForNotes') {
-      // Salva le note e completa la transazione
-      state.notes = input;
+      // Sanitizza le note
+      state.notes = sanitizeString(input);
       
       // Completa la transazione
       return completeTransaction(ctx);
     }
   } catch (error) {
-    console.error('Errore durante la gestione dell\'input della transazione:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la gestione dell'input della transazione:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -138,6 +149,8 @@ const handlePhotoUpload = async (ctx) => {
     }
     
     const state = transactionState[telegramId];
+    // Aggiorna il timestamp di attività
+    state.lastActivity = Date.now();
     
     // Ottieni il file ID della foto
     const photoFileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
@@ -156,8 +169,9 @@ const handlePhotoUpload = async (ctx) => {
         .resize()
     );
   } catch (error) {
-    console.error('Errore durante la gestione del caricamento della foto:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la gestione del caricamento della foto:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -176,6 +190,22 @@ const completeTransaction = async (ctx) => {
       delete transactionState[telegramId];
       return ctx.reply(
         '⚠️ Utente non trovato. Per favore, riprova più tardi.',
+        Markup.removeKeyboard()
+      );
+    }
+    
+    // Verifica se esiste già una transazione simile recente
+    const existingTransaction = await Transaction.findOne({
+      userId: user._id,
+      type: state.type,
+      amount: state.amount,
+      createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) } // Ultimi 5 minuti
+    });
+    
+    if (existingTransaction) {
+      delete transactionState[telegramId];
+      return ctx.reply(
+        '⚠️ Una transazione simile è stata già registrata negli ultimi minuti. Per favore controlla la tua cronologia.',
         Markup.removeKeyboard()
       );
     }
@@ -279,10 +309,11 @@ const completeTransaction = async (ctx) => {
     
     return ctx.reply(confirmationMessage, Markup.removeKeyboard());
   } catch (error) {
-    console.error('Errore durante il completamento della transazione:', error);
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante il completamento della transazione:`, error);
     delete transactionState[telegramId];
     return ctx.reply(
-      'Si è verificato un errore. Per favore, riprova più tardi.',
+      `Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`,
       Markup.removeKeyboard()
     );
   }
@@ -310,9 +341,12 @@ const approveUsage = async (ctx) => {
       return ctx.answerCbQuery('Utente non trovato');
     }
     
+    // Ottieni l'utente amministratore
+    const adminUser = await User.findOne({ telegramId: ctx.from.id });
+    
     // Aggiorna lo stato della transazione
     transaction.status = 'approved';
-    transaction.processedBy = ctx.user ? ctx.user._id : null;
+    transaction.processedBy = adminUser ? adminUser._id : null;
     await transaction.save();
     
     // Aggiorna il saldo dell'utente
@@ -349,8 +383,9 @@ const approveUsage = async (ctx) => {
     
     return ctx.answerCbQuery('Utilizzo approvato con successo');
   } catch (error) {
-    console.error('Errore durante l\'approvazione dell\'utilizzo:', error);
-    return ctx.answerCbQuery('Si è verificato un errore');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'approvazione dell'utilizzo:`, error);
+    return ctx.answerCbQuery(`Si è verificato un errore (${errorCode})`);
   }
 };
 
@@ -376,9 +411,12 @@ const rejectUsage = async (ctx) => {
       return ctx.answerCbQuery('Utente non trovato');
     }
     
+    // Ottieni l'utente amministratore
+    const adminUser = await User.findOne({ telegramId: ctx.from.id });
+    
     // Aggiorna lo stato della transazione
     transaction.status = 'rejected';
-    transaction.processedBy = ctx.user ? ctx.user._id : null;
+    transaction.processedBy = adminUser ? adminUser._id : null;
     await transaction.save();
     
     // Invia messaggio all'amministratore
@@ -402,8 +440,9 @@ const rejectUsage = async (ctx) => {
     
     return ctx.answerCbQuery('Utilizzo rifiutato');
   } catch (error) {
-    console.error('Errore durante il rifiuto dell\'utilizzo:', error);
-    return ctx.answerCbQuery('Si è verificato un errore');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante il rifiuto dell'utilizzo:`, error);
+    return ctx.answerCbQuery(`Si è verificato un errore (${errorCode})`);
   }
 };
 
@@ -488,8 +527,9 @@ const getBalance = async (ctx) => {
     
     return ctx.reply(message, { parse_mode: '' }); // Nessuna formattazione
   } catch (error) {
-    console.error('Errore durante la richiesta del saldo:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la richiesta del saldo:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -532,8 +572,9 @@ const getTransactionHistory = async (ctx) => {
     
     return ctx.reply(message, { parse_mode: '' });
   } catch (error) {
-    console.error('Errore durante la richiesta della cronologia:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la richiesta della cronologia:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
