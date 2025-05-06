@@ -88,4 +88,13 @@ const transactionSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Aggiungi indici per migliorare le prestazioni delle query
+transactionSchema.index({ userId: 1 }); // Per trovare rapidamente tutte le transazioni di un utente
+transactionSchema.index({ cardId: 1 }); // Per trovare transazioni per tessera
+transactionSchema.index({ type: 1 }); // Per filtrare per tipo (charge/usage)
+transactionSchema.index({ status: 1 }); // Per filtrare per stato (pending/approved/rejected)
+transactionSchema.index({ createdAt: -1 }); // Per ordinamento per data (più recenti prima)
+transactionSchema.index({ userId: 1, type: 1, createdAt: -1 }); // Query combinate comuni
+transactionSchema.index({ userId: 1, status: 1 }); // Per trovare transazioni in attesa per un utente
+
 module.exports = mongoose.model('Transaction', transactionSchema);
