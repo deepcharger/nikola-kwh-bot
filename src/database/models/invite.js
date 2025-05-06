@@ -90,4 +90,13 @@ inviteSchema.methods.markAsUsed = function(userId) {
   return this.save();
 };
 
+// Aggiungi indici per migliorare le prestazioni delle query
+inviteSchema.index({ code: 1 }, { unique: true }); // Per cercare rapidamente per codice
+inviteSchema.index({ createdBy: 1 }); // Per trovare i codici creati da un amministratore specifico
+inviteSchema.index({ isUsed: 1 }); // Per filtrare i codici utilizzati/non utilizzati
+inviteSchema.index({ isActive: 1 }); // Per filtrare i codici attivi/inattivi
+inviteSchema.index({ expiresAt: 1 }); // Per verificare i codici scaduti
+inviteSchema.index({ usedBy: 1 }, { sparse: true }); // Per trovare i codici utilizzati da un utente specifico
+inviteSchema.index({ createdAt: -1 }); // Per ordinare per data di creazione (più recenti prima)
+
 module.exports = mongoose.model('Invite', inviteSchema);
