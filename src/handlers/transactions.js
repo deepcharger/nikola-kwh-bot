@@ -530,7 +530,7 @@ const getTransactionHistory = async (ctx) => {
       message += '\n';
     }
     
-    return ctx.reply(message, { parse_mode: 'Markdown' });
+    return ctx.reply(message, { parse_mode: '' });
   } catch (error) {
     console.error('Errore durante la richiesta della cronologia:', error);
     return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
