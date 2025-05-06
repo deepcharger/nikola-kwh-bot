@@ -287,15 +287,14 @@ const startRecharge = async (ctx) => {
     // Se non ci sono argomenti, mostra istruzioni su come usare il comando
     if (args.length === 1) {
       return ctx.reply(
-        '🔋 *Ricarica saldo utente*\n\n' +
+        '🔋 RICARICA SALDO UTENTE\n\n' +
         'Per ricaricare il saldo di un utente, usa uno dei seguenti formati:\n\n' +
-        '• `/admin_ricarica [ID_Telegram]` - Cerca per ID Telegram\n' +
-        '• `/admin_ricarica @[username]` - Cerca per username Telegram\n' +
-        '• `/admin_ricarica tessera:[numero_tessera]` - Cerca per numero tessera\n\n' +
-        'Esempio: `/admin_ricarica 12345678` oppure `/admin_ricarica @username` oppure `/admin_ricarica tessera:ABC123`',
-        { parse_mode: 'Markdown' }
+        '• /admin_ricarica [ID_Telegram] - Cerca per ID Telegram\n' +
+        '• /admin_ricarica @[username] - Cerca per username Telegram\n' +
+        '• /admin_ricarica tessera:[numero_tessera] - Cerca per numero tessera\n\n' +
+        'Esempio: /admin_ricarica 12345678 oppure /admin_ricarica @username oppure /admin_ricarica tessera:ABC123',
+        { parse_mode: '' }
       );
-    }
     
     // Estrai il parametro di ricerca
     const searchParam = args.slice(1).join(' ').trim();
@@ -471,12 +470,12 @@ const confirmRecharge = async (ctx) => {
     try {
       await ctx.telegram.sendMessage(
         user.telegramId,
-        '🎉 *Ricarica effettuata!*\n\n' +
+        '🎉 Ricarica effettuata!\n\n' +
         `⚡ Quantità: ${state.amount} kWh\n` +
         `💰 Saldo precedente: ${oldBalance.toFixed(2)} kWh\n` +
         `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh\n\n` +
         'Grazie per aver utilizzato il nostro servizio!',
-        { parse_mode: 'Markdown' }
+        { parse_mode: '' }
       );
     } catch (error) {
       console.error('Errore nell\'invio della notifica all\'utente:', error);
@@ -493,7 +492,7 @@ const confirmRecharge = async (ctx) => {
       `⚡ Quantità: ${state.amount} kWh\n` +
       `💰 Saldo precedente: ${oldBalance.toFixed(2)} kWh\n` +
       `💰 Nuovo saldo: ${newBalance.toFixed(2)} kWh`,
-      { parse_mode: 'Markdown' }
+      { parse_mode: '' }
     );
     
     return ctx.answerCbQuery('Ricarica confermata!');
