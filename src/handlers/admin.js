@@ -7,6 +7,14 @@ const User = require('../database/models/user');
 const Transaction = require('../database/models/transaction');
 const Invite = require('../database/models/invite');
 const config = require('../config/config');
+const { 
+  sanitizeNumericId, 
+  sanitizeString, 
+  sanitizeAmount, 
+  sanitizeCardId, 
+  escapeMarkdown, 
+  generateErrorCode 
+} = require('../utils/sanitize');
 
 // Stato per la creazione delle ricariche
 const rechargeState = {};
@@ -33,7 +41,7 @@ const showUsersPage = async (ctx, users, threshold, page) => {
     
     for (let i = 0; i < usersOnPage.length; i++) {
       const user = usersOnPage[i];
-      message += `${startIndex + i + 1}. *${user.firstName} ${user.lastName}*\n`;
+      message += `${startIndex + i + 1}. *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `   💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
       message += `   🆔 ID: \`${user.telegramId}\`\n`;
       message += `   💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
@@ -65,6 +73,7 @@ const showUsersPage = async (ctx, users, threshold, page) => {
     const telegramId = ctx.from.id;
     if (lowBalanceState[telegramId]) {
       lowBalanceState[telegramId].currentPage = page;
+      lowBalanceState[telegramId].lastActivity = Date.now();
     }
     
     return ctx.reply(message, { 
@@ -74,8 +83,9 @@ const showUsersPage = async (ctx, users, threshold, page) => {
       ...Markup.removeKeyboard()
     });
   } catch (error) {
-    console.error('Errore durante la visualizzazione della pagina utenti:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.', 
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la visualizzazione della pagina utenti:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`, 
       Markup.removeKeyboard());
   }
 };
@@ -107,11 +117,16 @@ const sendUsersCsv = async (ctx, users, threshold) => {
     
     // Aggiungi i dati di ogni utente
     for (const user of users) {
+      // Sanitizza i valori per il CSV
+      const firstName = sanitizeString(user.firstName).replace(/"/g, '""'); // Escape le virgolette doppie
+      const lastName = sanitizeString(user.lastName).replace(/"/g, '""');
+      const username = user.username ? sanitizeString(user.username).replace(/"/g, '""') : '';
+      
       const row = [
         user.telegramId,
-        `"${user.firstName}"`,
-        `"${user.lastName}"`,
-        user.username ? `"${user.username}"` : '',
+        `"${firstName}"`,
+        `"${lastName}"`,
+        username ? `"${username}"` : '',
         user.cardId || '',
         user.balance.toFixed(2),
         lastCharges[user._id.toString()],
@@ -138,9 +153,10 @@ const sendUsersCsv = async (ctx, users, threshold) => {
       caption: `📊 Esportazione completata: ${users.length} utenti con saldo inferiore a ${threshold} kWh`
     });
   } catch (error) {
-    console.error('Errore durante la generazione del file CSV:', error);
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la generazione del file CSV:`, error);
     delete lowBalanceState[ctx.from.id];
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.', 
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`, 
       Markup.removeKeyboard());
   }
 };
@@ -158,6 +174,7 @@ const updateUserCommands = async (ctx, telegramId) => {
       { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
       { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
       { command: 'profilo', description: 'Visualizza il tuo profilo' },
+      { command: 'annulla', description: 'Annulla l\'operazione corrente' },
       // Comandi amministratore
       { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
       { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
@@ -193,9 +210,9 @@ const makeAdmin = async (ctx) => {
       return ctx.reply('⚠️ Utilizzo: /admin_make_admin [ID_Telegram]');
     }
     
-    const telegramId = parseInt(args[1].trim());
+    const telegramId = sanitizeNumericId(args[1].trim());
     
-    if (isNaN(telegramId)) {
+    if (!telegramId) {
       return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
     }
     
@@ -230,8 +247,9 @@ const makeAdmin = async (ctx) => {
       `🆔 ID Telegram: ${user.telegramId}`
     );
   } catch (error) {
-    console.error('Errore durante la promozione dell\'utente ad amministratore:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la promozione dell'utente ad amministratore:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -255,10 +273,10 @@ const getUsers = async (ctx) => {
         ? '✅ Attivo' 
         : (user.status === 'pending' ? '⏳ In attesa' : '❌ Bloccato');
       
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID Telegram: \`${user.telegramId}\`\n`;
       if (user.username) {
-        message += `👤 Username: @${user.username}\n`;
+        message += `👤 Username: @${escapeMarkdown(user.username)}\n`;
       }
       message += `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
@@ -271,8 +289,9 @@ const getUsers = async (ctx) => {
       disable_web_page_preview: true
     });
   } catch (error) {
-    console.error('Errore durante la richiesta della lista utenti:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la richiesta della lista utenti:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -295,10 +314,10 @@ const startRecharge = async (ctx) => {
           'Esempio: /admin_ricarica 12345678 oppure /admin_ricarica @username oppure /admin_ricarica tessera:ABC123',
           { parse_mode: '' }
         );
-    }  // Parentesi graffa aggiunta qui
+    }
     
     // Estrai il parametro di ricerca
-    const searchParam = args.slice(1).join(' ').trim();
+    const searchParam = sanitizeString(args.slice(1).join(' ').trim());
     let user;
     
     // Cerca l'utente in base al tipo di parametro
@@ -308,12 +327,15 @@ const startRecharge = async (ctx) => {
       user = await User.findOne({ username });
     } else if (searchParam.toLowerCase().startsWith('tessera:')) {
       // Cerca per numero tessera
-      const cardId = searchParam.substring(8).trim();
+      const cardId = sanitizeCardId(searchParam.substring(8).trim());
+      if (!cardId) {
+        return ctx.reply('⚠️ Formato tessera non valido. Per favore, inserisci un ID tessera valido.');
+      }
       user = await User.findOne({ cardId });
     } else {
       // Cerca per ID Telegram
-      const searchId = parseInt(searchParam);
-      if (isNaN(searchId)) {
+      const searchId = sanitizeNumericId(searchParam);
+      if (!searchId) {
         return ctx.reply('⚠️ Parametro non valido. Usa un ID Telegram numerico, un @username o tessera:NUMERO.');
       }
       user = await User.findOne({ telegramId: searchId });
@@ -341,7 +363,8 @@ const startRecharge = async (ctx) => {
     // Salva l'utente selezionato e passa alla fase successiva
     rechargeState[telegramId] = { 
       step: 'waitingForAmount',
-      user: user
+      user: user,
+      lastActivity: Date.now()
     };
     
     return ctx.reply(
@@ -354,8 +377,9 @@ const startRecharge = async (ctx) => {
         .resize()
     );
   } catch (error) {
-    console.error('Errore durante l\'avvio della ricarica:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'avvio della ricarica:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -373,6 +397,8 @@ const handleRechargeInput = async (ctx) => {
     }
     
     const state = rechargeState[telegramId];
+    // Aggiorna il timestamp di attività
+    state.lastActivity = Date.now();
     
     // Gestione dell'annullamento
     if (input === '❌ Annulla') {
@@ -386,10 +412,10 @@ const handleRechargeInput = async (ctx) => {
     // Gestione dell'input della quantità
     if (state.step === 'waitingForAmount') {
       // Verifica che l'input sia un numero valido
-      const amount = parseFloat(input);
+      const amount = sanitizeAmount(input, 10000); // Massimo 10000 kWh
       
-      if (isNaN(amount) || amount <= 0) {
-        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido:');
+      if (!amount) {
+        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido (massimo 10000 kWh):');
       }
       
       // Salva l'importo e passa alla fase successiva
@@ -420,9 +446,10 @@ const handleRechargeInput = async (ctx) => {
       );
     }
   } catch (error) {
-    console.error('Errore durante la gestione dell\'input di ricarica:', error);
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la gestione dell'input di ricarica:`, error);
     return ctx.reply(
-      'Si è verificato un errore. Per favore, riprova più tardi.',
+      `Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`,
       Markup.removeKeyboard()
     );
   }
@@ -435,11 +462,15 @@ const confirmRecharge = async (ctx) => {
   try {
     // Estrai l'ID Telegram dal callback data
     const callbackData = ctx.callbackQuery.data;
-    const telegramId = parseInt(callbackData.split('_')[2]);
+    const telegramId = sanitizeNumericId(callbackData.split('_')[2]);
+    
+    if (!telegramId) {
+      return await ctx.answerCbQuery('ID utente non valido.');
+    }
     
     // Verifica che esista un processo di ricarica per questo utente
     if (!rechargeState[telegramId] || rechargeState[telegramId].step !== 'waitingForConfirmation') {
-      return ctx.answerCbQuery('Nessuna ricarica in attesa di conferma.');
+      return await ctx.answerCbQuery('Nessuna ricarica in attesa di conferma.');
     }
     
     const state = rechargeState[telegramId];
@@ -452,6 +483,9 @@ const confirmRecharge = async (ctx) => {
     user.balance = newBalance;
     await user.save();
     
+    // Ottieni l'utente admin che sta effettuando la ricarica
+    const adminUser = await User.findOne({ telegramId: ctx.from.id });
+    
     // Crea la transazione
     const transaction = new Transaction({
       userId: user._id,
@@ -461,7 +495,7 @@ const confirmRecharge = async (ctx) => {
       previousBalance: oldBalance,
       newBalance,
       status: 'approved',
-      processedBy: ctx.callbackQuery.from._id,
+      processedBy: adminUser ? adminUser._id : null,
       notes: 'Ricarica manuale da amministratore'
     });
     
@@ -496,10 +530,11 @@ const confirmRecharge = async (ctx) => {
       { parse_mode: '' }
     );
     
-    return ctx.answerCbQuery('Ricarica confermata!');
+    return await ctx.answerCbQuery('Ricarica confermata!');
   } catch (error) {
-    console.error('Errore durante la conferma della ricarica:', error);
-    return ctx.answerCbQuery('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la conferma della ricarica:`, error);
+    return await ctx.answerCbQuery(`Si è verificato un errore (${errorCode}). Riprova più tardi.`);
   }
 };
 
@@ -510,11 +545,15 @@ const cancelRecharge = async (ctx) => {
   try {
     // Estrai l'ID Telegram dal callback data
     const callbackData = ctx.callbackQuery.data;
-    const telegramId = parseInt(callbackData.split('_')[2]);
+    const telegramId = sanitizeNumericId(callbackData.split('_')[2]);
+    
+    if (!telegramId) {
+      return await ctx.answerCbQuery('ID utente non valido.');
+    }
     
     // Verifica che esista un processo di ricarica per questo utente
     if (!rechargeState[telegramId]) {
-      return ctx.answerCbQuery('Nessuna ricarica in attesa di conferma.');
+      return await ctx.answerCbQuery('Nessuna ricarica in attesa di conferma.');
     }
     
     // Cancella lo stato di ricarica
@@ -525,10 +564,11 @@ const cancelRecharge = async (ctx) => {
       '❌ Ricarica annullata.'
     );
     
-    return ctx.answerCbQuery('Ricarica annullata.');
+    return await ctx.answerCbQuery('Ricarica annullata.');
   } catch (error) {
-    console.error('Errore durante l\'annullamento della ricarica:', error);
-    return ctx.answerCbQuery('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'annullamento della ricarica:`, error);
+    return await ctx.answerCbQuery(`Si è verificato un errore (${errorCode}). Riprova più tardi.`);
   }
 };
 
@@ -539,13 +579,14 @@ const startInviteCodeCreation = async (ctx) => {
   try {
     const telegramId = ctx.from.id;
     
-    // Genera un codice casuale
+    // Genera un codice casuale (solo lettere maiuscole e numeri)
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     
     // Inizializza lo stato per le note opzionali
     inviteCodeState[telegramId] = { 
       step: 'waitingForNotes',
-      code: code 
+      code: code,
+      lastActivity: Date.now()
     };
     
     return ctx.reply(
@@ -560,8 +601,9 @@ const startInviteCodeCreation = async (ctx) => {
       }
     );
   } catch (error) {
-    console.error('Errore durante la creazione del codice di invito:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la creazione del codice di invito:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -579,6 +621,8 @@ const handleInviteCodeInput = async (ctx) => {
     }
     
     const state = inviteCodeState[telegramId];
+    // Aggiorna il timestamp di attività
+    state.lastActivity = Date.now();
     
     // Gestione dell'annullamento
     if (input === '❌ Annulla') {
@@ -591,8 +635,8 @@ const handleInviteCodeInput = async (ctx) => {
     
     // Gestione delle note
     if (state.step === 'waitingForNotes') {
-      // Salva le note
-      state.notes = input === 'Nessuna nota' ? '' : input;
+      // Sanitizza le note
+      state.notes = sanitizeString(input === 'Nessuna nota' ? '' : input);
       
       // Crea il codice di invito
       // Prima trova l'utente dal telegramId
@@ -629,9 +673,10 @@ const handleInviteCodeInput = async (ctx) => {
       );
     }
   } catch (error) {
-    console.error('Errore durante la gestione dell\'input del codice di invito:', error);
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la gestione dell'input del codice di invito:`, error);
     return ctx.reply(
-      'Si è verificato un errore. Per favore, riprova più tardi.',
+      `Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`,
       Markup.removeKeyboard()
     );
   }
@@ -660,7 +705,7 @@ const getInviteCodes = async (ctx) => {
       const isExpired = new Date() > invite.expiresAt;
       const expiryStatus = isExpired ? '⏰ Scaduto' : '⏱️ Valido';
       
-      message += `🔑 *Codice: ${invite.code}*\n`;
+      message += `🔑 *Codice: ${escapeMarkdown(invite.code)}*\n`;
       message += `📊 Stato: ${status}\n`;
       message += `📅 Validità: ${expiryStatus}\n`;
       message += `📅 Scadenza: ${new Date(invite.expiresAt).toLocaleDateString('it-IT')}\n`;
@@ -671,7 +716,7 @@ const getInviteCodes = async (ctx) => {
       }
       
       if (invite.notes) {
-        message += `📝 Note: ${invite.notes}\n`;
+        message += `📝 Note: ${escapeMarkdown(invite.notes)}\n`;
       }
       
       message += '\n';
@@ -681,8 +726,9 @@ const getInviteCodes = async (ctx) => {
       parse_mode: 'Markdown'
     });
   } catch (error) {
-    console.error('Errore durante la richiesta della lista dei codici di invito:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la richiesta della lista dei codici di invito:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -740,8 +786,9 @@ const getStats = async (ctx) => {
       parse_mode: 'Markdown'
     });
   } catch (error) {
-    console.error('Errore durante la richiesta delle statistiche:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la richiesta delle statistiche:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -756,7 +803,10 @@ const findUserByCard = async (ctx) => {
       return ctx.reply('⚠️ Utilizzo: /admin_trova_tessera [numero_tessera]');
     }
     
-    const cardId = args[1].trim();
+    const cardId = sanitizeCardId(args[1].trim());
+    if (!cardId) {
+      return ctx.reply('⚠️ Formato tessera non valido. Per favore, inserisci un ID tessera valido.');
+    }
     
     // Cerca l'utente nel database
     const user = await User.findOne({ cardId });
@@ -773,8 +823,9 @@ const findUserByCard = async (ctx) => {
       disable_web_page_preview: true
     });
   } catch (error) {
-    console.error('Errore durante la ricerca dell\'utente per tessera:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la ricerca dell'utente per tessera:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -789,7 +840,7 @@ const findUserByName = async (ctx) => {
       return ctx.reply('⚠️ Utilizzo: /admin_trova_utente [username o nome]');
     }
     
-    const searchTerm = args.slice(1).join(' ').trim();
+    const searchTerm = sanitizeString(args.slice(1).join(' ').trim());
     let searchQuery = {};
     
     // Se inizia con @ è uno username
@@ -824,12 +875,12 @@ const findUserByName = async (ctx) => {
       let message = `🔍 *Trovati ${users.length} utenti*\n\n`;
       
       for (const user of users) {
-        message += `👤 *${user.firstName} ${user.lastName}*\n`;
+        message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
         message += `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n`;
         message += `🆔 ID Telegram: \`${user.telegramId}\`\n\n`;
       }
       
-      message += 'Per vedere i dettagli completi, usa: /admin_dettaglio [ID_Telegram]';
+      message += 'Per vedere i dettagli completi, usa: /admin\_dettaglio [ID_Telegram]';
       
       return ctx.reply(message, { 
         parse_mode: 'Markdown',
@@ -837,13 +888,13 @@ const findUserByName = async (ctx) => {
       });
     }
   } catch (error) {
-    console.error('Errore durante la ricerca dell\'utente per nome:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la ricerca dell'utente per nome:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
 /**
- /**
  * Mostra i dettagli completi di un utente specifico
  */
 const getUserDetails = async (ctx) => {
@@ -854,9 +905,9 @@ const getUserDetails = async (ctx) => {
       return ctx.reply('⚠️ Utilizzo: /admin_dettaglio [ID_Telegram]');
     }
     
-    const telegramId = parseInt(args[1].trim());
+    const telegramId = sanitizeNumericId(args[1].trim());
     
-    if (isNaN(telegramId)) {
+    if (!telegramId) {
       return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
     }
     
@@ -871,12 +922,13 @@ const getUserDetails = async (ctx) => {
     const userDetails = await formatUserDetails(user);
     
     return ctx.reply(userDetails, { 
-      parse_mode: '', // Disabilita la formattazione Markdown
+      parse_mode: 'Markdown', 
       disable_web_page_preview: true
     });
   } catch (error) {
-    console.error('Errore durante la visualizzazione dei dettagli dell\'utente:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la visualizzazione dei dettagli dell'utente:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -886,8 +938,8 @@ const getUserDetails = async (ctx) => {
 const formatUserDetails = async (user) => {
   // Formatta i dettagli principali dell'utente
   let message = `👤 *DETTAGLI UTENTE*\n\n`;
-  message += `*Nome*: ${user.firstName} ${user.lastName}\n`;
-  message += `*Username*: ${user.username ? '@' + user.username : 'Non impostato'}\n`;
+  message += `*Nome*: ${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}\n`;
+  message += `*Username*: ${user.username ? '@' + escapeMarkdown(user.username) : 'Non impostato'}\n`;
   message += `*Telegram ID*: \`${user.telegramId}\`\n`;
   message += `*Tessera ID*: ${user.cardId || 'Non impostata'}\n`;
   message += `*Saldo*: ${user.balance.toFixed(2)} kWh\n`;
@@ -932,7 +984,7 @@ const formatUserDetails = async (user) => {
       message += `💰 Saldo precedente: ${transaction.previousBalance.toFixed(2)} kWh\n`;
       message += `💰 Saldo dopo: ${transaction.newBalance.toFixed(2)} kWh\n`;
       if (transaction.notes) {
-        message += `📝 Note: ${transaction.notes}\n`;
+        message += `📝 Note: ${escapeMarkdown(transaction.notes)}\n`;
       }
       message += '\n';
     }
@@ -942,24 +994,24 @@ const formatUserDetails = async (user) => {
   
   // Aggiungi comandi rapidi
   message += `🔧 *Azioni rapide*:\n`;
-  message += `/admin_ricarica ${user.telegramId} - Per ricaricare il saldo\n`;
+  message += `/admin\_ricarica ${user.telegramId} - Per ricaricare il saldo\n`;
   
   if (user.status === 'pending') {
-    message += `/admin_approva ${user.telegramId} - Per approvare l'utente\n`;
+    message += `/admin\_approva ${user.telegramId} - Per approvare l'utente\n`;
   } else if (user.status === 'active') {
-    message += `/admin_blocca ${user.telegramId} - Per bloccare l'utente\n`;
-    message += `/admin_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
+    message += `/admin\_blocca ${user.telegramId} - Per bloccare l'utente\n`;
+    message += `/admin\_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
   } else if (user.status === 'blocked') {
-    message += `/admin_sblocca ${user.telegramId} - Per sbloccare l'utente\n`;
-    message += `/admin_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
+    message += `/admin\_sblocca ${user.telegramId} - Per sbloccare l'utente\n`;
+    message += `/admin\_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
   } else if (user.status === 'disabled') {
-    message += `/admin_sblocca ${user.telegramId} - Per riattivare l'utente\n`;
+    message += `/admin\_sblocca ${user.telegramId} - Per riattivare l'utente\n`;
   }
   
-  message += `/admin_elimina ${user.telegramId} - Per eliminare l'utente\n`;
+  message += `/admin\_elimina ${user.telegramId} - Per eliminare l'utente\n`;
   
   if (!user.isAdmin) {
-    message += `/admin_make_admin ${user.telegramId} - Per promuovere l'utente ad amministratore\n`;
+    message += `/admin\_make\_admin ${user.telegramId} - Per promuovere l'utente ad amministratore\n`;
   }
   
   return message;
@@ -982,11 +1034,16 @@ const exportUsers = async (ctx) => {
     
     // Aggiungi i dati di ogni utente
     for (const user of users) {
+      // Sanitizza i valori per il CSV
+      const firstName = sanitizeString(user.firstName).replace(/"/g, '""'); // Escape le virgolette doppie
+      const lastName = sanitizeString(user.lastName).replace(/"/g, '""');
+      const username = user.username ? sanitizeString(user.username).replace(/"/g, '""') : '';
+      
       const row = [
         user.telegramId,
-        `"${user.firstName}"`,
-        `"${user.lastName}"`,
-        user.username ? `"${user.username}"` : '',
+        `"${firstName}"`,
+        `"${lastName}"`,
+        username ? `"${username}"` : '',
         user.cardId || '',
         user.balance.toFixed(2),
         user.status,
@@ -1011,8 +1068,9 @@ const exportUsers = async (ctx) => {
       caption: `📊 Esportazione completata: ${users.length} utenti`
     });
   } catch (error) {
-    console.error('Errore durante l\'esportazione degli utenti:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'esportazione degli utenti:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -1027,9 +1085,9 @@ const changeUserStatus = async (ctx, newStatus) => {
       return ctx.reply(`⚠️ Utilizzo: /admin_${newStatus === 'active' ? 'approva' : (newStatus === 'blocked' ? 'blocca' : 'sblocca')} [ID_Telegram]`);
     }
     
-    const telegramId = parseInt(args[1].trim());
+    const telegramId = sanitizeNumericId(args[1].trim());
     
-    if (isNaN(telegramId)) {
+    if (!telegramId) {
       return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
     }
     
@@ -1069,8 +1127,9 @@ const changeUserStatus = async (ctx, newStatus) => {
       `📊 Nuovo stato: ${newStatus === 'active' ? '✅ Attivo' : (newStatus === 'blocked' ? '❌ Bloccato' : '⏳ In attesa')}`
     );
   } catch (error) {
-    console.error(`Errore durante il cambio di stato dell'utente:`, error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante il cambio di stato dell'utente:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -1108,7 +1167,7 @@ const getUsersPaginated = async (ctx) => {
     
     // Se viene richiesto un filtro specifico, sovrascrive la query
     if (args.length > 1) {
-      const filter = args[1].toLowerCase();
+      const filter = sanitizeString(args[1].toLowerCase());
       
       if (filter === 'attivi') {
         query = { status: 'active' };
@@ -1158,14 +1217,14 @@ const getUsersPaginated = async (ctx) => {
         status = '🚫 Disabilitato';
       }
       
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
       message += `📊 Stato: ${status}\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin\\_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -1201,8 +1260,9 @@ const getUsersPaginated = async (ctx) => {
       ...Markup.inlineKeyboard(keyboard)
     });
   } catch (error) {
-    console.error('Errore durante la richiesta della lista utenti paginata:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la richiesta della lista utenti paginata:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -1217,9 +1277,9 @@ const disableUser = async (ctx) => {
       return ctx.reply('⚠️ Utilizzo: /admin_disabilita [ID_Telegram]');
     }
     
-    const telegramId = parseInt(args[1].trim());
+    const telegramId = sanitizeNumericId(args[1].trim());
     
-    if (isNaN(telegramId)) {
+    if (!telegramId) {
       return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
     }
     
@@ -1253,8 +1313,9 @@ const disableUser = async (ctx) => {
       `💳 Tessera ID: ${user.cardId || 'Non impostata'}`
     );
   } catch (error) {
-    console.error('Errore durante la disabilitazione dell\'utente:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la disabilitazione dell'utente:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -1269,9 +1330,9 @@ const deleteUser = async (ctx) => {
       return ctx.reply('⚠️ Utilizzo: /admin_elimina [ID_Telegram]');
     }
     
-    const telegramId = parseInt(args[1].trim());
+    const telegramId = sanitizeNumericId(args[1].trim());
     
-    if (isNaN(telegramId)) {
+    if (!telegramId) {
       return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
     }
     
@@ -1281,7 +1342,7 @@ const deleteUser = async (ctx) => {
     if (!user) {
       return ctx.reply(`❌ Nessun utente trovato con ID Telegram: ${telegramId}`);
     }
-    
+
     // Richiedi conferma
     const userDetails = `👤 ${user.firstName} ${user.lastName}\n` +
                         `🆔 ID Telegram: ${user.telegramId}\n` +
@@ -1305,8 +1366,9 @@ const deleteUser = async (ctx) => {
       { parse_mode: 'Markdown' }
     );
   } catch (error) {
-    console.error('Errore durante la preparazione dell\'eliminazione dell\'utente:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la preparazione dell'eliminazione dell'utente:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -1321,9 +1383,9 @@ const confirmUserDeletion = async (ctx) => {
       return ctx.reply('⚠️ Utilizzo: /admin_conferma_eliminazione [ID_Telegram]');
     }
     
-    const telegramId = parseInt(args[1].trim());
+    const telegramId = sanitizeNumericId(args[1].trim());
     
-    if (isNaN(telegramId)) {
+    if (!telegramId) {
       return ctx.reply('⚠️ ID Telegram non valido. Deve essere un numero.');
     }
     
@@ -1362,8 +1424,9 @@ const confirmUserDeletion = async (ctx) => {
       `Tutte le transazioni associate sono state eliminate.`
     );
   } catch (error) {
-    console.error('Errore durante l\'eliminazione dell\'utente:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'eliminazione dell'utente:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -1375,7 +1438,10 @@ const startLowBalanceSearch = async (ctx) => {
     const telegramId = ctx.from.id;
     
     // Inizializza lo stato della ricerca
-    lowBalanceState[telegramId] = { step: 'waitingForThreshold' };
+    lowBalanceState[telegramId] = { 
+      step: 'waitingForThreshold',
+      lastActivity: Date.now()
+    };
     
     return ctx.reply(
       '📊 *Ricerca utenti con saldo basso*\n\n' +
@@ -1388,8 +1454,9 @@ const startLowBalanceSearch = async (ctx) => {
       }
     );
   } catch (error) {
-    console.error('Errore durante l\'avvio della ricerca saldi bassi:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'avvio della ricerca saldi bassi:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -1407,6 +1474,8 @@ const handleLowBalanceInput = async (ctx) => {
     }
     
     const state = lowBalanceState[telegramId];
+    // Aggiorna il timestamp di attività
+    state.lastActivity = Date.now();
     
     // Gestione dell'annullamento
     if (input === '❌ Annulla') {
@@ -1420,10 +1489,10 @@ const handleLowBalanceInput = async (ctx) => {
     // Gestione della soglia
     if (state.step === 'waitingForThreshold') {
       // Verifica che l'input sia un numero valido
-      const threshold = parseFloat(input);
+      const threshold = sanitizeAmount(input, 10000); // Usa un limite più alto per le soglie
       
-      if (isNaN(threshold) || threshold <= 0) {
-        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido:');
+      if (!threshold) {
+        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido (massimo 10000 kWh):');
       }
       
       // Salva la soglia
@@ -1467,10 +1536,11 @@ const handleLowBalanceInput = async (ctx) => {
       );
     }
   } catch (error) {
-    console.error('Errore durante la gestione dell\'input per la ricerca saldi bassi:', error);
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la gestione dell'input per la ricerca saldi bassi:`, error);
     delete lowBalanceState[telegramId];
     return ctx.reply(
-      'Si è verificato un errore. Per favore, riprova più tardi.',
+      `Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`,
       Markup.removeKeyboard()
     );
   }
