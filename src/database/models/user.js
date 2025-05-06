@@ -82,4 +82,14 @@ userSchema.pre('save', function(next) {
   next();
 });
 
+// Aggiungi indici per migliorare le prestazioni delle query
+userSchema.index({ telegramId: 1 }, { unique: true });
+userSchema.index({ cardId: 1 }, { unique: true, sparse: true });
+userSchema.index({ status: 1 });
+userSchema.index({ balance: 1 }); // Per query di saldo basso
+userSchema.index({ isAdmin: 1 }); // Per query di amministratori
+userSchema.index({ username: 1 }, { sparse: true }); // Per ricerche per username
+userSchema.index({ createdAt: -1 }); // Per ordinamento per data di creazione
+userSchema.index({ lastSeen: -1 }); // Per ordinamento per ultima attività
+
 module.exports = mongoose.model('User', userSchema);
