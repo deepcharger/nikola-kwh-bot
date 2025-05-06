@@ -843,6 +843,7 @@ const findUserByName = async (ctx) => {
 };
 
 /**
+ /**
  * Mostra i dettagli completi di un utente specifico
  */
 const getUserDetails = async (ctx) => {
@@ -870,7 +871,7 @@ const getUserDetails = async (ctx) => {
     const userDetails = await formatUserDetails(user);
     
     return ctx.reply(userDetails, { 
-      parse_mode: 'Markdown',
+      parse_mode: '', // Disabilita la formattazione Markdown
       disable_web_page_preview: true
     });
   } catch (error) {
