@@ -398,7 +398,7 @@ const handleRechargeInput = async (ctx) => {
       
       // Usa pulsanti inline invece della tastiera per la conferma
       return ctx.reply(
-        '🔍 *Riepilogo ricarica*\n\n' +
+        '🔍 Riepilogo ricarica\n\n' +
         `👤 Utente: ${state.user.firstName} ${state.user.lastName}\n` +
         `💳 Tessera ID: ${state.user.cardId || 'Non impostata'}\n` +
         `⚡ Quantità: ${amount} kWh\n` +
@@ -406,7 +406,7 @@ const handleRechargeInput = async (ctx) => {
         `💰 Nuovo saldo: ${(state.user.balance + amount).toFixed(2)} kWh\n\n` +
         'Confermi questa ricarica?',
         {
-          parse_mode: 'Markdown',
+          parse_mode: '',  // Nessuna formattazione
           reply_markup: {
             inline_keyboard: [
               [
