@@ -417,16 +417,60 @@ const getBalance = async (ctx) => {
     // Formato il saldo con 2 decimali
     const formattedBalance = user.balance.toFixed(2);
     
-    // Messaggio base
-    let message = `💰 *Il tuo saldo attuale è di ${formattedBalance} kWh*\n\n` +
-                  '👤 Dati utente:\n' +
-                  `🆔 ID Tessera: ${user.cardId}\n` +
-                  `📝 Stato: ${user.status === 'active' ? '✅ Attivo' : '⏳ In attesa'}\n`;
+    // Ottieni le ultime transazioni dell'utente per calcolare statistiche
+    const lastUsages = await Transaction.find({ 
+      userId: user._id, 
+      type: 'usage',
+      status: 'approved'
+    }).sort({ createdAt: -1 }).limit(5);
+    
+    // Calcola il consumo medio settimanale (se ci sono abbastanza dati)
+    let consumoMedio = "Non disponibile";
+    if (lastUsages.length > 0) {
+      const totalKwh = lastUsages.reduce((sum, t) => sum + t.amount, 0);
+      consumoMedio = (totalKwh / lastUsages.length).toFixed(2) + " kWh/utilizzo";
+    }
+    
+    // Trova l'ultima ricarica
+    const lastCharge = await Transaction.findOne({ 
+      userId: user._id, 
+      type: 'charge',
+      status: 'approved'
+    }).sort({ createdAt: -1 });
+    
+    let ultimaRicarica = "Mai effettuata";
+    if (lastCharge) {
+      const daysPassed = Math.floor((new Date() - new Date(lastCharge.createdAt)) / (1000 * 60 * 60 * 24));
+      ultimaRicarica = `${daysPassed} giorni fa (${lastCharge.amount.toFixed(2)} kWh)`;
+    }
+    
+    // Calcola stima autonomia (molto semplificata)
+    let stimaAutonomia = "Non disponibile";
+    if (lastUsages.length > 0 && user.balance > 0) {
+      const avgUsage = lastUsages.reduce((sum, t) => sum + t.amount, 0) / lastUsages.length;
+      if (avgUsage > 0) {
+        const days = Math.floor(user.balance / avgUsage);
+        stimaAutonomia = `${days} giorni circa`;
+      }
+    }
+    
+    // Messaggio formattato senza Markdown
+    let message = `📊 SALDO ENERGETICO 📊\n\n`;
+    message += `➡️ ${formattedBalance} kWh ⬅️\n\n`;
+    message += `👤 INFORMAZIONI UTENTE:\n`;
+    message += `• Tessera: ${user.cardId}\n`;
+    message += `• Stato: ${user.status === 'active' ? '✅ Attivo' : '⏳ In attesa'}\n\n`;
+    
+    // Aggiungi statistiche
+    message += `⚡ STATISTICHE:\n`;
+    message += `• Consumo medio: ${consumoMedio}\n`;
+    message += `• Ultima ricarica: ${ultimaRicarica}\n`;
+    message += `• Stima autonomia: ${stimaAutonomia}\n`;
     
     // Controlla se il saldo è basso e aggiunge un avviso
     if (user.balance < LOW_BALANCE_THRESHOLD) {
-      message += `\n⚠️ AVVISO: Il tuo saldo è basso (inferiore a ${LOW_BALANCE_THRESHOLD} kWh).\n` +
-                'Ti consigliamo di contattare un amministratore per una ricarica.';
+      message += `\n⚠️ AVVISO: Il tuo saldo è basso (inferiore a ${LOW_BALANCE_THRESHOLD} kWh).\n`;
+      message += `Ti consigliamo di contattare un amministratore per una ricarica.`;
       
       // Invia anche un avviso all'amministratore
       try {
@@ -442,7 +486,7 @@ const getBalance = async (ctx) => {
       }
     }
     
-    return ctx.reply(message, { parse_mode: 'Markdown' });
+    return ctx.reply(message, { parse_mode: '' }); // Nessuna formattazione
   } catch (error) {
     console.error('Errore durante la richiesta del saldo:', error);
     return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
