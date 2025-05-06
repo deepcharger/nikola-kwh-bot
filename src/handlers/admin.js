@@ -286,15 +286,16 @@ const startRecharge = async (ctx) => {
     
     // Se non ci sono argomenti, mostra istruzioni su come usare il comando
     if (args.length === 1) {
-      return ctx.reply(
-        '🔋 RICARICA SALDO UTENTE\n\n' +
-        'Per ricaricare il saldo di un utente, usa uno dei seguenti formati:\n\n' +
-        '• /admin_ricarica [ID_Telegram] - Cerca per ID Telegram\n' +
-        '• /admin_ricarica @[username] - Cerca per username Telegram\n' +
-        '• /admin_ricarica tessera:[numero_tessera] - Cerca per numero tessera\n\n' +
-        'Esempio: /admin_ricarica 12345678 oppure /admin_ricarica @username oppure /admin_ricarica tessera:ABC123',
-        { parse_mode: '' }
-      );
+        return ctx.reply(
+          '🔋 RICARICA SALDO UTENTE\n\n' +
+          'Per ricaricare il saldo di un utente, usa uno dei seguenti formati:\n\n' +
+          '• /admin_ricarica [ID_Telegram] - Cerca per ID Telegram\n' +
+          '• /admin_ricarica @[username] - Cerca per username Telegram\n' +
+          '• /admin_ricarica tessera:[numero_tessera] - Cerca per numero tessera\n\n' +
+          'Esempio: /admin_ricarica 12345678 oppure /admin_ricarica @username oppure /admin_ricarica tessera:ABC123',
+          { parse_mode: '' }
+        );
+    }  // Parentesi graffa aggiunta qui
     
     // Estrai il parametro di ricerca
     const searchParam = args.slice(1).join(' ').trim();
