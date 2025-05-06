@@ -99,7 +99,7 @@ const showProfile = async (ctx) => {
     ]);
     
     // Formatta il profilo
-    let message = '👤 *Il tuo profilo*\n\n';
+    let message = '👤 IL TUO PROFILO\n\n';
     
     message += `👤 Nome: ${user.firstName} ${user.lastName}\n`;
     message += `💳 Tessera ID: ${user.cardId}\n`;
@@ -120,14 +120,14 @@ const showProfile = async (ctx) => {
     message += `📊 Stato: ${statusText}\n`;
     message += `📅 Registrato il: ${new Date(user.createdAt).toLocaleDateString('it-IT')}\n\n`;
     
-    message += '📊 *Statistiche*\n';
+    message += '📊 STATISTICHE\n';
     message += `🔋 Ricariche totali: ${totalCharges}\n`;
     message += `⚡ Utilizzi totali: ${totalUsages}\n`;
     message += `🔋 kWh totali caricati: ${totalKwhCharged.length > 0 ? totalKwhCharged[0].total.toFixed(2) : 0}\n`;
     message += `⚡ kWh totali utilizzati: ${totalKwhUsed.length > 0 ? totalKwhUsed[0].total.toFixed(2) : 0}\n`;
     
     return ctx.reply(message, { 
-      parse_mode: 'Markdown'
+      parse_mode: '' // Nessuna formattazione
     });
   } catch (error) {
     console.error('Errore durante la visualizzazione del profilo:', error);
