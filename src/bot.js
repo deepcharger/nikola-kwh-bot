@@ -81,6 +81,7 @@ const adminCommands = [
   { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
   { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
   { command: 'profilo', description: 'Visualizza il tuo profilo' },
+  { command: 'annulla', description: 'Annulla l\'operazione corrente' },
   // Comandi amministratore
   { command: 'admin_utenti', description: 'Visualizza la lista degli utenti' },
   { command: 'admin_trova_tessera', description: 'Cerca utente per numero tessera' },
@@ -100,7 +101,8 @@ const userCommands = [
   { command: 'saldo', description: 'Visualizza il tuo saldo kWh attuale' },
   { command: 'cronologia', description: 'Visualizza la cronologia delle transazioni' },
   { command: 'registra_utilizzo', description: 'Registra un nuovo utilizzo di kWh' },
-  { command: 'profilo', description: 'Visualizza il tuo profilo' }
+  { command: 'profilo', description: 'Visualizza il tuo profilo' },
+  { command: 'annulla', description: 'Annulla l\'operazione corrente' }
 ];
 
 // Inizializza il bot
@@ -173,6 +175,45 @@ bot.command('admin_aggiorna_comandi', isAdmin, async (ctx) => {
 // Nuovo comando per la ricerca di utenti con saldo basso
 bot.command('admin_saldi_bassi', isAdmin, startLowBalanceSearch);
 
+// Handler per il comando /annulla
+bot.command('annulla', async (ctx) => {
+  const telegramId = ctx.from.id;
+  
+  // Pulisci tutti gli stati per questo utente
+  let stateFound = false;
+  
+  if (registrationState[telegramId]) {
+    delete registrationState[telegramId];
+    stateFound = true;
+  }
+  
+  if (transactionState[telegramId]) {
+    delete transactionState[telegramId];
+    stateFound = true;
+  }
+  
+  if (rechargeState[telegramId]) {
+    delete rechargeState[telegramId];
+    stateFound = true;
+  }
+  
+  if (inviteCodeState[telegramId]) {
+    delete inviteCodeState[telegramId];
+    stateFound = true;
+  }
+  
+  if (lowBalanceState[telegramId]) {
+    delete lowBalanceState[telegramId];
+    stateFound = true;
+  }
+  
+  if (stateFound) {
+    return ctx.reply('🚫 Operazione corrente annullata.', Markup.removeKeyboard());
+  } else {
+    return ctx.reply('ℹ️ Non ci sono operazioni in corso da annullare.');
+  }
+});
+
 // Handler per le callback query
 bot.action(/approve_registration:(.+)/, isAdmin, approveRegistration);
 bot.action(/reject_registration:(.+)/, isAdmin, rejectRegistration);
@@ -195,6 +236,8 @@ bot.action(/low_balance_page_(\d+)/, async (ctx) => {
     }
     
     const state = lowBalanceState[telegramId];
+    // Aggiorna timestamp attività
+    state.lastActivity = Date.now();
     
     await showUsersPage(ctx, state.users, state.threshold, page);
     return ctx.answerCbQuery();
@@ -214,6 +257,8 @@ bot.action('low_balance_csv', async (ctx) => {
     }
     
     const state = lowBalanceState[telegramId];
+    // Aggiorna timestamp attività
+    state.lastActivity = Date.now();
     
     await sendUsersCsv(ctx, state.users, state.threshold);
     return ctx.answerCbQuery();
@@ -234,6 +279,8 @@ bot.action('low_balance_show_list', async (ctx) => {
     }
     
     const state = lowBalanceState[telegramId];
+    // Aggiorna timestamp attività
+    state.lastActivity = Date.now();
     state.currentPage = 0;
     
     await showUsersPage(ctx, state.users, state.threshold, state.currentPage);
@@ -313,7 +360,7 @@ bot.action(/users_page_(\d+)_(.*)/, async (ctx) => {
       message += `📊 Stato: ${status}\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -397,7 +444,7 @@ bot.action('users_filter_all', async (ctx) => {
       message += `📊 Stato: ${status}\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -469,7 +516,7 @@ bot.action('users_filter_active', async (ctx) => {
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -540,7 +587,7 @@ bot.action('users_filter_pending', async (ctx) => {
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -611,7 +658,7 @@ bot.action('users_filter_blocked', async (ctx) => {
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -684,7 +731,7 @@ bot.action('users_filter_disabled', async (ctx) => {
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -769,7 +816,7 @@ bot.action('users_filter_really_all', async (ctx) => {
       message += `📊 Stato: ${status}\n\n`;
     }
     
-    message += `\nPer vedere dettagli completi: /admin_dettaglio [ID_Telegram]`;
+    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -859,6 +906,37 @@ bot.on('photo', async (ctx) => {
 bot.on('message', (ctx) => {
   ctx.reply('Comando non riconosciuto. Usa /help per visualizzare i comandi disponibili.');
 });
+
+// NUOVA FUNZIONE: Pulizia periodica degli stati
+const cleanupStates = () => {
+  const now = Date.now();
+  const TIMEOUT = 30 * 60 * 1000; // 30 minuti
+  
+  // Pulisci registrationState
+  Object.keys(registrationState).forEach(telegramId => {
+    if (!registrationState[telegramId].lastActivity || 
+        now - registrationState[telegramId].lastActivity > TIMEOUT) {
+      console.log(`Pulizia stato registrazione per utente ${telegramId}`);
+      delete registrationState[telegramId];
+    }
+  });
+  
+  // Pulisci gli altri stati allo stesso modo
+  [transactionState, rechargeState, inviteCodeState, lowBalanceState].forEach(stateObj => {
+    Object.keys(stateObj).forEach(telegramId => {
+      if (!stateObj[telegramId].lastActivity || 
+          now - stateObj[telegramId].lastActivity > TIMEOUT) {
+        console.log(`Pulizia stato per utente ${telegramId}`);
+        delete stateObj[telegramId];
+      }
+    });
+  });
+  
+  console.log('Pulizia stati inattivi completata');
+};
+
+// Esegui la pulizia ogni ora
+setInterval(cleanupStates, 60 * 60 * 1000);
 
 // Funzione per l'avvio del bot
 const startBot = async () => {
