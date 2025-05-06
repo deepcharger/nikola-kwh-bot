@@ -6,14 +6,13 @@ const { Markup } = require('telegraf');
 const User = require('../database/models/user');
 const Invite = require('../database/models/invite');
 const config = require('../config/config');
-
-/**
- * Funzione per fare l'escape dei caratteri speciali Markdown
- */
-function escapeMarkdown(text) {
-  if (!text) return '';
-  return String(text).replace(/([_*[\]()~`>#+=|{}.!\\])/g, '\\$1');
-}
+const { 
+  sanitizeString, 
+  sanitizeCardId, 
+  sanitizeInviteCode, 
+  escapeMarkdown,
+  generateErrorCode 
+} = require('../utils/sanitize');
 
 // Stato della registrazione degli utenti
 const registrationState = {};
@@ -56,7 +55,10 @@ const startRegistration = async (ctx) => {
                        'Per favore, inserisci il tuo codice di invito:';
       
       // Inizializza lo stato di registrazione dell'utente
-      registrationState[telegramId] = { step: 'waitingForInviteCode' };
+      registrationState[telegramId] = { 
+        step: 'waitingForInviteCode',
+        lastActivity: Date.now()
+      };
       
       return ctx.reply(welcomeMessage);
     } else {
@@ -64,13 +66,17 @@ const startRegistration = async (ctx) => {
       welcomeMessage += 'Per registrarti, inserisci il numero della tua tessera RFID:';
       
       // Inizializza lo stato di registrazione dell'utente
-      registrationState[telegramId] = { step: 'waitingForCardId' };
+      registrationState[telegramId] = { 
+        step: 'waitingForCardId',
+        lastActivity: Date.now()
+      };
       
       return ctx.reply(welcomeMessage);
     }
   } catch (error) {
-    console.error('Errore durante l\'avvio della registrazione:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'avvio della registrazione:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -88,11 +94,22 @@ const handleRegistrationInput = async (ctx) => {
     }
     
     const state = registrationState[telegramId];
+    // Aggiorna il timestamp di attività
+    state.lastActivity = Date.now();
     
     // Gestione del codice di invito
     if (state.step === 'waitingForInviteCode') {
+      // Sanitizza il codice di invito
+      const inviteCode = sanitizeInviteCode(input.trim());
+      
+      if (!inviteCode) {
+        return ctx.reply(
+          '❌ Formato codice di invito non valido. Deve essere di 6 caratteri alfanumerici.\n' +
+          'Per favore, inserisci un codice di invito valido:'
+        );
+      }
+      
       // Verifica il codice di invito
-      const inviteCode = input.trim();
       const invite = await Invite.findOne({ code: inviteCode });
       
       if (!invite || !invite.isValid()) {
@@ -111,7 +128,14 @@ const handleRegistrationInput = async (ctx) => {
     
     // Gestione dell'ID della tessera
     if (state.step === 'waitingForCardId') {
-      const cardId = input.trim();
+      // Sanitizza l'ID tessera
+      const cardId = sanitizeCardId(input.trim());
+      
+      if (!cardId) {
+        return ctx.reply(
+          '❌ Formato tessera non valido. Per favore, inserisci un ID tessera valido:'
+        );
+      }
       
       // Verifica che l'ID della tessera non sia già registrato
       const existingCard = await User.findOne({ cardId });
@@ -126,12 +150,17 @@ const handleRegistrationInput = async (ctx) => {
       // Salva l'ID della tessera e completa la registrazione
       state.cardId = cardId;
       
+      // Sanitizza i dati utente da Telegram
+      const firstName = sanitizeString(ctx.from.first_name || '');
+      const lastName = sanitizeString(ctx.from.last_name || '');
+      const username = sanitizeString(ctx.from.username || '');
+      
       // Crea il nuovo utente
       const newUser = new User({
         telegramId,
-        firstName: ctx.from.first_name || '',
-        lastName: ctx.from.last_name || '',
-        username: ctx.from.username || '',
+        firstName,
+        lastName,
+        username,
         cardId,
         inviteCodeUsed: state.inviteCode || null,
         status: 'pending', // In attesa di approvazione da parte dell'amministratore
@@ -189,8 +218,9 @@ const handleRegistrationInput = async (ctx) => {
       );
     }
   } catch (error) {
-    console.error('Errore durante la gestione dell\'input di registrazione:', error);
-    return ctx.reply('Si è verificato un errore. Per favore, riprova più tardi.');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la gestione dell'input di registrazione:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
 
@@ -232,8 +262,9 @@ const approveRegistration = async (ctx) => {
     
     return ctx.answerCbQuery('Registrazione approvata con successo');
   } catch (error) {
-    console.error('Errore durante l\'approvazione della registrazione:', error);
-    return ctx.answerCbQuery('Si è verificato un errore');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'approvazione della registrazione:`, error);
+    return ctx.answerCbQuery(`Si è verificato un errore (${errorCode})`);
   }
 };
 
@@ -274,8 +305,9 @@ const rejectRegistration = async (ctx) => {
     
     return ctx.answerCbQuery('Registrazione rifiutata');
   } catch (error) {
-    console.error('Errore durante il rifiuto della registrazione:', error);
-    return ctx.answerCbQuery('Si è verificato un errore');
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante il rifiuto della registrazione:`, error);
+    return ctx.answerCbQuery(`Si è verificato un errore (${errorCode})`);
   }
 };
 
