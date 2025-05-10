@@ -87,6 +87,12 @@ const {
 // Import middlewares
 const { isRegistered, isAdmin } = require('./middlewares/auth');
 
+// Funzione di supporto per l'escape di caratteri speciali in Markdown
+const escapeMarkdown = (text) => {
+  if (!text) return '';
+  return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+};
+
 // Definizione dei comandi admin e utente
 const adminCommands = [
   { command: 'start', description: 'Avvia il bot / Registrazione' },
@@ -413,10 +419,12 @@ bot.action(/users_page_(\d+)_(.*)/, async (ctx) => {
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
-      message += `📊 Stato: ${status}\n\n`;
+      message += `📊 Stato: ${status}\n`;
+      // Aggiunto comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per ricarica
+      message += `💸 \`/admin_ricarica ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -497,10 +505,12 @@ bot.action('users_filter_all', async (ctx) => {
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
-      message += `📊 Stato: ${status}\n\n`;
+      message += `📊 Stato: ${status}\n`;
+      // Aggiunto comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per ricarica
+      message += `💸 \`/admin_ricarica ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -566,13 +576,15 @@ bot.action('users_filter_active', async (ctx) => {
     message += `📄 Pagina ${page} di ${totalPages}\n\n`;
     
     for (const user of users) {
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
-      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n\n`;
+      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
+      // Aggiunto comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per ricarica
+      message += `💸 \`/admin_ricarica ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -638,12 +650,14 @@ bot.action('users_filter_pending', async (ctx) => {
     message += `📄 Pagina ${page} di ${totalPages}\n\n`;
     
     for (const user of users) {
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
-      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
+      // Aggiunto comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per approvazione
+      message += `✅ \`/admin_approva ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -709,12 +723,14 @@ bot.action('users_filter_blocked', async (ctx) => {
     message += `📄 Pagina ${page} di ${totalPages}\n\n`;
     
     for (const user of users) {
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
-      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
+      message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
+      // Aggiunto comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per sblocco
+      message += `✅ \`/admin_sblocca ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -781,13 +797,15 @@ bot.action('users_filter_disabled', async (ctx) => {
     message += `📄 Pagina ${page} di ${totalPages}\n\n`;
     
     for (const user of users) {
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
-      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n\n`;
+      message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
+      // Aggiunto comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per riattivazione
+      message += `✅ \`/admin_sblocca ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -865,14 +883,19 @@ bot.action('users_filter_really_all', async (ctx) => {
         status = '🚫 Disabilitato';
       }
       
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
-      message += `📊 Stato: ${status}\n\n`;
+      message += `📊 Stato: ${status}\n`;
+      // Aggiunto comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per ricarica se utente non è disabilitato
+      if (user.status !== 'disabled') {
+        message += `💸 \`/admin_ricarica ${user.telegramId}\`\n`;
+      }
+      message += `\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
