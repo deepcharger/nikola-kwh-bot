@@ -51,11 +51,12 @@ const showUsersPage = async (ctx, users, threshold, page) => {
       message += `${startIndex + i + 1}. *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `   💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
       message += `   🆔 ID: \`${user.telegramId}\`\n`;
-      message += `   💳 Tessera: ${user.cardId || 'Non impostata'}\n\n`;
+      message += `   💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
+      // Aggiunto comando copiabile per dettagli
+      message += `   📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Aggiunto comando copiabile per ricarica
+      message += `   💸 \`/admin_ricarica ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nUsa i pulsanti sotto per navigare o \`/admin_dettaglio ID\` per vedere i dettagli completi di un utente.`;
-    message += `\nPer ricaricare un utente: \`/admin_ricarica ID\``;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -290,7 +291,10 @@ const getUsers = async (ctx) => {
       message += `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
       message += `📊 Stato: ${status}\n`;
-      message += `📅 Registrato il: ${new Date(user.createdAt).toLocaleDateString('it-IT')}\n\n`;
+      message += `📅 Registrato il: ${new Date(user.createdAt).toLocaleDateString('it-IT')}\n`;
+      // Aggiunti comandi copiabili
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      message += `💸 \`/admin_ricarica ${user.telegramId}\`\n\n`;
     }
     
     return ctx.reply(message, { 
@@ -515,7 +519,12 @@ const showRechargeHistoryPage = async (ctx, transactions, dateDescription, page,
       message += `🔋 *${escapeMarkdown(userName)}* - ${transaction.amount.toFixed(2)} kWh\n`;
       message += `   💳 Tessera: ${cardId}\n`;
       message += `   📅 Data: ${date} ${time}\n`;
-      message += `   💰 Saldo finale: ${transaction.newBalance.toFixed(2)} kWh\n\n`;
+      message += `   💰 Saldo finale: ${transaction.newBalance.toFixed(2)} kWh\n`;
+      // Comando copiabile per dettagli utente
+      if (user) {
+        message += `   📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      }
+      message += `\n`;
     }
     
     return ctx.reply(message, { 
@@ -544,6 +553,7 @@ const generateRechargeHistoryNavigationButtons = (currentPage, totalPages) => {
   }
   
   buttons.push(Markup.button.callback('🚫 Chiudi', 'recharge_history_close'));
+  buttons.push(Markup.button.callback('📥 Esporta CSV', 'recharge_history_export'));
   
   return buttons;
 };
@@ -928,6 +938,11 @@ const showUsageHistoryPage = async (ctx, transactions, dateDescription, page, to
       // Aggiungi note se presenti
       if (transaction.notes && transaction.notes.length > 0) {
         message += `   📝 Note: ${escapeMarkdown(transaction.notes)}\n`;
+      }
+      
+      // Comando copiabile per dettagli utente
+      if (user) {
+        message += `   📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
       }
       
       message += `\n`;
@@ -1710,10 +1725,12 @@ const findUserByName = async (ctx) => {
       for (const user of users) {
         message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
         message += `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n`;
-        message += `🆔 ID Telegram: \`${user.telegramId}\`\n\n`;
+        message += `🆔 ID Telegram: \`${user.telegramId}\`\n`;
+        // Comando copiabile per dettagli
+        message += `📋 Dettagli: \`/admin_dettaglio ${user.telegramId}\`\n`;
+        // Comando copiabile per ricarica
+        message += `💸 Ricarica: \`/admin_ricarica ${user.telegramId}\`\n\n`;
       }
-      
-      message += 'Per vedere i dettagli completi, usa: /admin\_dettaglio [ID_Telegram]';
       
       return ctx.reply(message, { 
         parse_mode: 'Markdown',
@@ -1825,26 +1842,26 @@ const formatUserDetails = async (user) => {
     message += '📝 *Nessuna transazione registrata*\n\n';
   }
   
-  // Aggiungi comandi rapidi
+  // Aggiungi comandi rapidi (ora copiabili)
   message += `🔧 *Azioni rapide*:\n`;
-  message += `/admin\_ricarica ${user.telegramId} - Per ricaricare il saldo\n`;
+  message += `💸 \`/admin_ricarica ${user.telegramId}\` - Per ricaricare il saldo\n`;
   
   if (user.status === 'pending') {
-    message += `/admin\_approva ${user.telegramId} - Per approvare l'utente\n`;
+    message += `✅ \`/admin_approva ${user.telegramId}\` - Per approvare l'utente\n`;
   } else if (user.status === 'active') {
-    message += `/admin\_blocca ${user.telegramId} - Per bloccare l'utente\n`;
-    message += `/admin\_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
+    message += `❌ \`/admin_blocca ${user.telegramId}\` - Per bloccare l'utente\n`;
+    message += `🚫 \`/admin_disabilita ${user.telegramId}\` - Per disabilitare l'utente\n`;
   } else if (user.status === 'blocked') {
-    message += `/admin\_sblocca ${user.telegramId} - Per sbloccare l'utente\n`;
-    message += `/admin\_disabilita ${user.telegramId} - Per disabilitare l'utente\n`;
+    message += `✅ \`/admin_sblocca ${user.telegramId}\` - Per sbloccare l'utente\n`;
+    message += `🚫 \`/admin_disabilita ${user.telegramId}\` - Per disabilitare l'utente\n`;
   } else if (user.status === 'disabled') {
-    message += `/admin\_sblocca ${user.telegramId} - Per riattivare l'utente\n`;
+    message += `✅ \`/admin_sblocca ${user.telegramId}\` - Per riattivare l'utente\n`;
   }
   
-  message += `/admin\_elimina ${user.telegramId} - Per eliminare l'utente\n`;
+  message += `🗑️ \`/admin_elimina ${user.telegramId}\` - Per eliminare l'utente\n`;
   
   if (!user.isAdmin) {
-    message += `/admin\_make\_admin ${user.telegramId} - Per promuovere l'utente ad amministratore\n`;
+    message += `👑 \`/admin_make_admin ${user.telegramId}\` - Per promuovere l'utente ad amministratore\n`;
   }
   
   return message;
@@ -2054,10 +2071,10 @@ const getUsersPaginated = async (ctx) => {
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
-      message += `📊 Stato: ${status}\n\n`;
+      message += `📊 Stato: ${status}\n`;
+      // Aggiungi comando copiabile
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n\n`;
     }
-    
-    message += `\nPer vedere dettagli completi: /admin\_dettaglio [ID_Telegram]`;
     
     // Crea bottoni per la navigazione
     const keyboard = [];
@@ -2195,7 +2212,7 @@ const deleteUser = async (ctx) => {
       `⚠️ *ATTENZIONE*: Stai per eliminare definitivamente questo utente:\n\n` +
       `${userDetails}\n\n` +
       `Questa operazione è *IRREVERSIBILE* e rimuoverà anche tutte le transazioni associate.\n\n` +
-      `Per confermare, invia: /admin_conferma_eliminazione ${telegramId}`,
+      `Per confermare, invia: \`/admin_conferma_eliminazione ${telegramId}\``,
       { parse_mode: 'Markdown' }
     );
   } catch (error) {
