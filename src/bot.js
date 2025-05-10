@@ -69,7 +69,14 @@ const {
   navigateRechargeHistory,
   closeRechargeHistory,
   exportRechargeHistory,
-  rechargeHistoryState
+  rechargeHistoryState,
+  // Nuove funzioni per cronologia utilizzi
+  startUsageHistory,
+  handleUsageHistoryInput,
+  navigateUsageHistory,
+  closeUsageHistory,
+  exportUsageHistory,
+  usageHistoryState
 } = require('./handlers/admin');
 
 const {
@@ -100,7 +107,8 @@ const adminCommands = [
   { command: 'admin_make_admin', description: 'Promuovi un utente ad amministratore' },
   { command: 'admin_aggiorna_comandi', description: 'Aggiorna i comandi bot' },
   { command: 'admin_saldi_bassi', description: 'Trova utenti con saldo basso' },
-  { command: 'admin_ricariche', description: 'Visualizza le ultime ricariche' }
+  { command: 'admin_ricariche', description: 'Visualizza le ultime ricariche' },
+  { command: 'admin_utilizzi', description: 'Visualizza gli ultimi utilizzi kWh' }
 ];
 
 const userCommands = [
@@ -136,6 +144,7 @@ bot.command('admin_crea_invito', isAdmin, startInviteCodeCreation);
 bot.command('admin_inviti', isAdmin, getInviteCodes);
 bot.command('admin_stats', isAdmin, getStats);
 bot.command('admin_ricariche', isAdmin, startRechargeHistory);
+bot.command('admin_utilizzi', isAdmin, startUsageHistory);
 
 // Nuovi handler per i comandi admin
 bot.command('admin_trova_tessera', isAdmin, findUserByCard);
@@ -221,6 +230,11 @@ bot.command('annulla', async (ctx) => {
     stateFound = true;
   }
   
+  if (usageHistoryState[telegramId]) {
+    delete usageHistoryState[telegramId];
+    stateFound = true;
+  }
+  
   if (stateFound) {
     return ctx.reply('🚫 Operazione corrente annullata.', Markup.removeKeyboard());
   } else {
@@ -251,6 +265,20 @@ bot.action(/recharge_history_page_(\d+)/, async (ctx) => {
 
 bot.action('recharge_history_close', closeRechargeHistory);
 bot.action('recharge_history_export', exportRechargeHistory);
+
+// Handler per le callback della navigazione utilizzi
+bot.action(/usage_history_page_(\d+)/, async (ctx) => {
+  try {
+    const page = parseInt(ctx.match[1]);
+    await navigateUsageHistory(ctx, page);
+  } catch (error) {
+    console.error('Errore durante la navigazione delle pagine della cronologia utilizzi:', error);
+    return ctx.answerCbQuery('Si è verificato un errore');
+  }
+});
+
+bot.action('usage_history_close', closeUsageHistory);
+bot.action('usage_history_export', exportUsageHistory);
 
 // Handler per le callback della navigazione saldi bassi
 bot.action(/low_balance_page_(\d+)/, async (ctx) => {
@@ -381,7 +409,7 @@ bot.action(/users_page_(\d+)_(.*)/, async (ctx) => {
         status = '🚫 Disabilitato';
       }
       
-      message += `👤 *${user.firstName} ${user.lastName}*\n`;
+      message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
       message += `🆔 ID: \`${user.telegramId}\`\n`;
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
@@ -921,6 +949,11 @@ bot.on('text', async (ctx, next) => {
     return handleRechargeHistoryInput(ctx);
   }
   
+  // Gestione della ricerca cronologia utilizzi
+  if (usageHistoryState[telegramId]) {
+    return handleUsageHistoryInput(ctx);
+  }
+  
   // Se nessun handler specifico è stato attivato, passa al middleware successivo
   return next();
 });
@@ -955,7 +988,7 @@ const cleanupStates = () => {
   });
   
   // Pulisci gli altri stati allo stesso modo
-  [transactionState, rechargeState, inviteCodeState, lowBalanceState, rechargeHistoryState].forEach(stateObj => {
+  [transactionState, rechargeState, inviteCodeState, lowBalanceState, rechargeHistoryState, usageHistoryState].forEach(stateObj => {
     Object.keys(stateObj).forEach(telegramId => {
       if (!stateObj[telegramId].lastActivity || 
           now - stateObj[telegramId].lastActivity > TIMEOUT) {
