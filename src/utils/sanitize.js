@@ -83,6 +83,40 @@ const escapeMarkdown = (text) => {
   return String(text).replace(/([_*[\]()~`>#+=|{}.!\\])/g, '\\$1');
 };
 
+/**
+ * Sanitizza e valida una data in formato italiano (GG/MM/AAAA)
+ * @param {string} dateStr - La data da sanitizzare e validare
+ * @returns {object} - Oggetto con proprietà valid e date
+ */
+const sanitizeDate = (dateStr) => {
+  if (!dateStr) return { valid: false, date: null };
+
+  // Verifica se la stringa corrisponde al formato GG/MM/AAAA
+  const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const match = dateStr.match(dateRegex);
+
+  if (!match) return { valid: false, date: null };
+
+  // Estrai giorno, mese e anno
+  const day = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10) - 1; // I mesi in JavaScript partono da 0
+  const year = parseInt(match[3], 10);
+
+  // Crea un oggetto Date
+  const date = new Date(year, month, day);
+
+  // Verifica che la data sia valida
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month ||
+    date.getDate() !== day
+  ) {
+    return { valid: false, date: null };
+  }
+
+  return { valid: true, date };
+};
+
 module.exports = {
   sanitizeNumericId,
   sanitizeString,
@@ -90,5 +124,6 @@ module.exports = {
   sanitizeCardId,
   sanitizeInviteCode,
   generateErrorCode,
-  escapeMarkdown
+  escapeMarkdown,
+  sanitizeDate
 };
