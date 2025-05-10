@@ -18,36 +18,52 @@ const showHelp = async (ctx) => {
     let message = '📚 Comandi disponibili\n\n';
     
     // Comandi per tutti gli utenti
-    message += '👤 Comandi utente\n';
+    message += '👤 *COMANDI UTENTE*\n';
     message += '`/start` - Avvia il bot / Registrazione\n';
     message += '`/help` - Mostra questo messaggio di aiuto\n';
     message += '`/saldo` - Visualizza il tuo saldo kWh attuale\n';
     message += '`/cronologia` - Visualizza la cronologia delle tue transazioni\n';
     message += '`/registra_utilizzo` - Registra un nuovo utilizzo di kWh\n';
-    message += '`/profilo` - Visualizza il tuo profilo\n\n';
+    message += '`/profilo` - Visualizza il tuo profilo\n';
+    message += '`/annulla` - Annulla l\'operazione corrente\n\n';
     
-    // Comandi per amministratori
+    // Comandi per amministratori, organizzati per categorie logiche
     if (isAdmin) {
-      message += '👑 Comandi amministratore\n';
+      message += '👑 *COMANDI AMMINISTRATORE*\n\n';
+      
+      // Sezione gestione utenti
+      message += '🧑‍💼 *Gestione Utenti*\n';
       message += '`/admin_utenti` - Visualizza la lista degli utenti paginata\n';
       message += '`/admin_trova_tessera [numero]` - Cerca utente per tessera\n';
-      message += '`/admin_trova_utente [nome o @username]` - Cerca utente\n';
+      message += '`/admin_trova_utente [nome o @username]` - Cerca utente per nome\n';
       message += '`/admin_dettaglio [ID_Telegram]` - Mostra dettagli utente\n';
+      message += '`/admin_esporta_utenti` - Esporta lista utenti in CSV\n';
+      message += '`/admin_saldi_bassi` - Trova utenti con saldo basso\n\n';
+      
+      // Sezione gestione stato utenti
+      message += '📊 *Gestione Stato Utenti*\n';
       message += '`/admin_approva [ID_Telegram]` - Approva un utente\n';
       message += '`/admin_blocca [ID_Telegram]` - Blocca un utente\n';
       message += '`/admin_sblocca [ID_Telegram]` - Sblocca un utente\n';
       message += '`/admin_disabilita [ID_Telegram]` - Disabilita un utente\n';
       message += '`/admin_elimina [ID_Telegram]` - Elimina definitivamente un utente\n';
       message += '`/admin_conferma_eliminazione [ID_Telegram]` - Conferma eliminazione\n';
+      message += '`/admin_make_admin [ID_Telegram]` - Promuovi un utente ad amministratore\n\n';
+      
+      // Sezione gestione energia e credito
+      message += '⚡ *Gestione Energia e Credito*\n';
       message += '`/admin_ricarica [ID_Telegram/@username/tessera:XX]` - Ricarica un utente\n';
+      message += '`/admin_ricariche` - Visualizza le ultime ricariche\n\n';
+      
+      // Sezione gestione inviti
+      message += '🔑 *Gestione Inviti*\n';
       message += '`/admin_crea_invito` - Crea un nuovo codice di invito\n';
-      message += '`/admin_inviti` - Visualizza la lista dei codici di invito\n';
-      message += '`/admin_esporta_utenti` - Esporta lista utenti in CSV\n';
+      message += '`/admin_inviti` - Visualizza la lista dei codici di invito\n\n';
+      
+      // Sezione statistiche e sistema
+      message += '⚙️ *Sistema e Statistiche*\n';
       message += '`/admin_stats` - Visualizza le statistiche del bot\n';
-      message += '`/admin_make_admin [ID_Telegram]` - Promuovi un utente ad amministratore\n';
       message += '`/admin_aggiorna_comandi` - Aggiorna i comandi bot\n';
-      message += '`/admin_saldi_bassi` - Trova utenti con saldo basso\n';
-      message += '`/admin_ricariche` - Visualizza le ultime ricariche\n';
     }
     
     return ctx.reply(message, { parse_mode: 'Markdown' });
