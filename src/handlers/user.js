@@ -52,7 +52,9 @@ const showHelp = async (ctx) => {
       
       // Sezione gestione energia e credito
       message += '⚡ *Gestione Energia e Credito*\n';
-      message += '`/admin_ricarica [ID_Telegram/@username/tessera:XX]` - Ricarica un utente\n';
+      message += '`/admin_ricarica [ID_Telegram]` - Ricarica un utente per ID\n';
+      message += '`/admin_ricarica @[username]` - Ricarica un utente per username\n';
+      message += '`/admin_ricarica tessera:` - Ricarica un utente per numero tessera\n';
       message += '`/admin_ricariche` - Visualizza le ultime ricariche\n';
       message += '`/admin_utilizzi` - Visualizza gli ultimi utilizzi kWh\n\n';
       
