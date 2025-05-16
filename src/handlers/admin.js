@@ -52,10 +52,15 @@ const showUsersPage = async (ctx, users, threshold, page) => {
       message += `   💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
       message += `   🆔 ID: \`${user.telegramId}\`\n`;
       message += `   💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
-      // Aggiunto comando copiabile per dettagli
+      // Aggiunti comandi copiabili
       message += `   📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
-      // Aggiunto comando copiabile per ricarica
-      message += `   💸 \`/admin_ricarica ${user.telegramId}\`\n\n`;
+      // Comandi per ricarica
+      message += `   💸 \`/admin_ricarica ${user.telegramId}\`\n`;
+      // Aggiungi comando ricarica per tessera se disponibile
+      if (user.cardId) {
+        message += `   💳 \`/admin_ricarica tessera:${user.cardId}\`\n`;
+      }
+      message += `\n`;
     }
     
     // Crea bottoni per la navigazione
@@ -294,7 +299,11 @@ const getUsers = async (ctx) => {
       message += `📅 Registrato il: ${new Date(user.createdAt).toLocaleDateString('it-IT')}\n`;
       // Aggiunti comandi copiabili
       message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
-      message += `💸 \`/admin_ricarica ${user.telegramId}\`\n\n`;
+      message += `💸 \`/admin_ricarica ${user.telegramId}\`\n`;
+      if (user.cardId) {
+        message += `💳 \`/admin_ricarica tessera:${user.cardId}\`\n`;
+      }
+      message += `\n`;
     }
     
     return ctx.reply(message, { 
@@ -343,7 +352,6 @@ const startRechargeHistory = async (ctx) => {
     return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
   }
 };
-
 /**
  * Gestisce l'input durante la ricerca delle ricariche
  */
@@ -1144,6 +1152,122 @@ const exportUsageHistory = async (ctx) => {
 };
 
 /**
+ * Avvia il processo di ricerca utenti con saldo basso
+ */
+const startLowBalanceSearch = async (ctx) => {
+  try {
+    const telegramId = ctx.from.id;
+    
+    // Inizializza lo stato della ricerca
+    lowBalanceState[telegramId] = { 
+      step: 'waitingForThreshold',
+      lastActivity: Date.now()
+    };
+    
+    return ctx.reply(
+      '📊 *Ricerca utenti con saldo basso*\n\n' +
+      'Inserisci il valore di soglia in kWh per cui vuoi visualizzare gli utenti con saldo inferiore:',
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.keyboard([['❌ Annulla']])
+          .oneTime()
+          .resize()
+      }
+    );
+  } catch (error) {
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante l'avvio della ricerca saldi bassi:`, error);
+    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
+  }
+};
+
+/**
+ * Gestisce l'input durante la ricerca di saldi bassi
+ */
+const handleLowBalanceInput = async (ctx) => {
+  try {
+    const telegramId = ctx.from.id;
+    const input = ctx.message.text;
+    
+    // Controlla se l'amministratore è in processo di ricerca saldi bassi
+    if (!lowBalanceState[telegramId]) {
+      return;
+    }
+    
+    const state = lowBalanceState[telegramId];
+    // Aggiorna il timestamp di attività
+    state.lastActivity = Date.now();
+    
+    // Gestione dell'annullamento
+    if (input === '❌ Annulla') {
+      delete lowBalanceState[telegramId];
+      return ctx.reply(
+        '❌ Operazione annullata.',
+        Markup.removeKeyboard()
+      );
+    }
+    
+    // Gestione della soglia
+    if (state.step === 'waitingForThreshold') {
+      // Verifica che l'input sia un numero valido
+      const threshold = sanitizeAmount(input, 10000); // Usa un limite più alto per le soglie
+      
+      if (!threshold) {
+        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido (massimo 10000 kWh):');
+      }
+      
+      // Salva la soglia
+      state.threshold = threshold;
+      
+      // Cerca gli utenti con saldo inferiore alla soglia
+      const users = await User.find({ 
+        balance: { $lt: threshold },
+        status: 'active' // Solo utenti attivi
+      }).sort({ balance: 1 }); // Ordina per saldo crescente
+      
+      if (users.length === 0) {
+        delete lowBalanceState[telegramId];
+        return ctx.reply(
+          `✅ Non ci sono utenti con saldo inferiore a ${threshold} kWh.`,
+          Markup.removeKeyboard()
+        );
+      }
+      
+      // Salva gli utenti nell'oggetto di stato
+      state.users = users;
+      
+      // Rimuovi la tastiera precedente e mostra i pulsanti inline per scegliere come visualizzare i risultati
+      return ctx.reply(
+        `📊 Trovati ${users.length} utenti con saldo inferiore a ${threshold} kWh.\n\n` +
+        'Come preferisci visualizzare i risultati?',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📋 Visualizza elenco', callback_data: 'low_balance_show_list' },
+                { text: '📥 Scarica file CSV', callback_data: 'low_balance_csv' }
+              ],
+              [
+                { text: '❌ Annulla', callback_data: 'low_balance_cancel' }
+              ]
+            ],
+            remove_keyboard: true
+          }
+        }
+      );
+    }
+  } catch (error) {
+    const errorCode = generateErrorCode();
+    console.error(`Errore [${errorCode}] durante la gestione dell'input per la ricerca saldi bassi:`, error);
+    delete lowBalanceState[telegramId];
+    return ctx.reply(
+      `Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`,
+      Markup.removeKeyboard()
+    );
+  }
+};
+
+/**
  * Avvia il processo di creazione di una ricarica
  */
 const startRecharge = async (ctx) => {
@@ -1156,11 +1280,14 @@ const startRecharge = async (ctx) => {
         return ctx.reply(
           '🔋 RICARICA SALDO UTENTE\n\n' +
           'Per ricaricare il saldo di un utente, usa uno dei seguenti formati:\n\n' +
-          '• /admin_ricarica [ID_Telegram] - Cerca per ID Telegram\n' +
-          '• /admin_ricarica @[username] - Cerca per username Telegram\n' +
-          '• /admin_ricarica tessera:[numero_tessera] - Cerca per numero tessera\n\n' +
-          'Esempio: /admin_ricarica 12345678 oppure /admin_ricarica @username oppure /admin_ricarica tessera:ABC123',
-          { parse_mode: '' }
+          '• `/admin_ricarica [ID_Telegram]` - Cerca per ID Telegram\n' +
+          '• `/admin_ricarica @[username]` - Cerca per username Telegram\n' +
+          '• `/admin_ricarica tessera:` - Cerca per numero tessera\n\n' +
+          'Esempi copiabili:\n' +
+          '`/admin_ricarica 12345678`\n' +
+          '`/admin_ricarica @username`\n' +
+          '`/admin_ricarica tessera:`',
+          { parse_mode: 'Markdown' }
         );
     }
     
@@ -1209,6 +1336,12 @@ const startRecharge = async (ctx) => {
     }
     
     // Salva l'utente selezionato e passa alla fase successiva
+    rechargeState[telegramId] = { 
+      step: 'waitingForAmount',
+      user: user,
+      lastActivity: Date.now()
+    };
+	// Salva l'utente selezionato e passa alla fase successiva
     rechargeState[telegramId] = { 
       step: 'waitingForAmount',
       user: user,
@@ -1726,10 +1859,15 @@ const findUserByName = async (ctx) => {
         message += `👤 *${escapeMarkdown(user.firstName)} ${escapeMarkdown(user.lastName)}*\n`;
         message += `💳 Tessera ID: ${user.cardId || 'Non impostata'}\n`;
         message += `🆔 ID Telegram: \`${user.telegramId}\`\n`;
-        // Comando copiabile per dettagli
+        // Aggiunti comandi copiabili
         message += `📋 Dettagli: \`/admin_dettaglio ${user.telegramId}\`\n`;
-        // Comando copiabile per ricarica
-        message += `💸 Ricarica: \`/admin_ricarica ${user.telegramId}\`\n\n`;
+        // Comando per ricarica per ID
+        message += `💸 Ricarica: \`/admin_ricarica ${user.telegramId}\`\n`;
+        // Aggiungi comando ricarica per tessera se disponibile
+        if (user.cardId) {
+          message += `💳 Ricarica tessera: \`/admin_ricarica tessera:${user.cardId}\`\n`;
+        }
+        message += `\n`;
       }
       
       return ctx.reply(message, { 
@@ -1844,7 +1982,11 @@ const formatUserDetails = async (user) => {
   
   // Aggiungi comandi rapidi (ora copiabili)
   message += `🔧 *Azioni rapide*:\n`;
-  message += `💸 \`/admin_ricarica ${user.telegramId}\` - Per ricaricare il saldo\n`;
+  message += `💸 \`/admin_ricarica ${user.telegramId}\` - Per ricaricare per ID\n`;
+  // Aggiungi comando ricarica per tessera se disponibile
+  if (user.cardId) {
+    message += `💳 \`/admin_ricarica tessera:${user.cardId}\` - Per ricaricare per tessera\n`;
+  }
   
   if (user.status === 'pending') {
     message += `✅ \`/admin_approva ${user.telegramId}\` - Per approvare l'utente\n`;
@@ -2072,8 +2214,15 @@ const getUsersPaginated = async (ctx) => {
       message += `💳 Tessera: ${user.cardId || 'Non impostata'}\n`;
       message += `💰 Saldo: ${user.balance.toFixed(2)} kWh\n`;
       message += `📊 Stato: ${status}\n`;
-      // Aggiungi comando copiabile
-      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n\n`;
+      // Aggiunti comandi copiabili
+      message += `📋 \`/admin_dettaglio ${user.telegramId}\`\n`;
+      // Comando per ricarica per ID
+      message += `💸 \`/admin_ricarica ${user.telegramId}\`\n`;
+      // Aggiungi comando ricarica per tessera se disponibile
+      if (user.cardId) {
+        message += `💳 \`/admin_ricarica tessera:${user.cardId}\`\n`;
+      }
+      message += `\n`;
     }
     
     // Crea bottoni per la navigazione
@@ -2277,122 +2426,6 @@ const confirmUserDeletion = async (ctx) => {
     const errorCode = generateErrorCode();
     console.error(`Errore [${errorCode}] durante l'eliminazione dell'utente:`, error);
     return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
-  }
-};
-
-/**
- * Avvia il processo di ricerca utenti con saldo basso
- */
-const startLowBalanceSearch = async (ctx) => {
-  try {
-    const telegramId = ctx.from.id;
-    
-    // Inizializza lo stato della ricerca
-    lowBalanceState[telegramId] = { 
-      step: 'waitingForThreshold',
-      lastActivity: Date.now()
-    };
-    
-    return ctx.reply(
-      '📊 *Ricerca utenti con saldo basso*\n\n' +
-      'Inserisci il valore di soglia in kWh per cui vuoi visualizzare gli utenti con saldo inferiore:',
-      { 
-        parse_mode: 'Markdown',
-        ...Markup.keyboard([['❌ Annulla']])
-          .oneTime()
-          .resize()
-      }
-    );
-  } catch (error) {
-    const errorCode = generateErrorCode();
-    console.error(`Errore [${errorCode}] durante l'avvio della ricerca saldi bassi:`, error);
-    return ctx.reply(`Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`);
-  }
-};
-
-/**
- * Gestisce l'input durante la ricerca di saldi bassi
- */
-const handleLowBalanceInput = async (ctx) => {
-  try {
-    const telegramId = ctx.from.id;
-    const input = ctx.message.text;
-    
-    // Controlla se l'amministratore è in processo di ricerca saldi bassi
-    if (!lowBalanceState[telegramId]) {
-      return;
-    }
-    
-    const state = lowBalanceState[telegramId];
-    // Aggiorna il timestamp di attività
-    state.lastActivity = Date.now();
-    
-    // Gestione dell'annullamento
-    if (input === '❌ Annulla') {
-      delete lowBalanceState[telegramId];
-      return ctx.reply(
-        '❌ Operazione annullata.',
-        Markup.removeKeyboard()
-      );
-    }
-    
-    // Gestione della soglia
-    if (state.step === 'waitingForThreshold') {
-      // Verifica che l'input sia un numero valido
-      const threshold = sanitizeAmount(input, 10000); // Usa un limite più alto per le soglie
-      
-      if (!threshold) {
-        return ctx.reply('⚠️ Inserisci un valore numerico positivo valido (massimo 10000 kWh):');
-      }
-      
-      // Salva la soglia
-      state.threshold = threshold;
-      
-      // Cerca gli utenti con saldo inferiore alla soglia
-      const users = await User.find({ 
-        balance: { $lt: threshold },
-        status: 'active' // Solo utenti attivi
-      }).sort({ balance: 1 }); // Ordina per saldo crescente
-      
-      if (users.length === 0) {
-        delete lowBalanceState[telegramId];
-        return ctx.reply(
-          `✅ Non ci sono utenti con saldo inferiore a ${threshold} kWh.`,
-          Markup.removeKeyboard()
-        );
-      }
-      
-      // Salva gli utenti nell'oggetto di stato
-      state.users = users;
-      
-      // Rimuovi la tastiera precedente e mostra i pulsanti inline per scegliere come visualizzare i risultati
-      return ctx.reply(
-        `📊 Trovati ${users.length} utenti con saldo inferiore a ${threshold} kWh.\n\n` +
-        'Come preferisci visualizzare i risultati?',
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '📋 Visualizza elenco', callback_data: 'low_balance_show_list' },
-                { text: '📥 Scarica file CSV', callback_data: 'low_balance_csv' }
-              ],
-              [
-                { text: '❌ Annulla', callback_data: 'low_balance_cancel' }
-              ]
-            ],
-            remove_keyboard: true
-          }
-        }
-      );
-    }
-  } catch (error) {
-    const errorCode = generateErrorCode();
-    console.error(`Errore [${errorCode}] durante la gestione dell'input per la ricerca saldi bassi:`, error);
-    delete lowBalanceState[telegramId];
-    return ctx.reply(
-      `Si è verificato un errore (codice: ${errorCode}). Per favore, riprova più tardi.`,
-      Markup.removeKeyboard()
-    );
   }
 };
 
